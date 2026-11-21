@@ -2,6 +2,7 @@ package privval
 
 import (
 	"io"
+	"time"
 
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
@@ -68,6 +69,8 @@ func (ss *SignerServer) servicePendingRequest() {
 		if err != io.EOF {
 			ss.Logger.Error("SignerServer: HandleMessage", "err", err)
 		}
+		// The connection is closed or out of sync, so reconnect.
+		ss.endpoint.DropConnection()
 		return
 	}
 
@@ -95,7 +98,14 @@ func (ss *SignerServer) serviceLoop() {
 		default:
 			err := ss.endpoint.ensureConnection()
 			if err != nil {
-				return
+				// The node may be down for a while. Keep dialing until it is back.
+				ss.Logger.Error("SignerServer: ensureConnection", "err", err)
+				select {
+				case <-time.After(ss.endpoint.retryWait):
+					continue
+				case <-ss.Quit():
+					return
+				}
 			}
 			ss.servicePendingRequest()
 

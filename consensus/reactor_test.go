@@ -3,9 +3,11 @@ package consensus
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,6 +53,9 @@ import (
 
 var defaultTestTime = time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// blockSubCapacity is how many new-block events a test subscription buffers.
+const blockSubCapacity = 1000
+
 func startConsensusNet(t *testing.T, css []*State, n int) (
 	[]*Reactor,
 	[]types.Subscription,
@@ -69,7 +74,10 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 		eventBuses[i] = css[i].eventBus
 		reactors[i].SetEventBus(eventBuses[i])
 
-		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
+		// Empty blocks commit every few milliseconds. With the default capacity of 1, two
+		// blocks committed between a test's reads cancel the subscription and the test
+		// then waits forever, so leave room for the gaps between reads.
+		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock, blockSubCapacity)
 		require.NoError(t, err)
 		blocksSubs = append(blocksSubs, blocksSub)
 
@@ -292,6 +300,61 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 		})
 		reactor.AddPeer(peer)
 	})
+}
+
+// maxHeightCommitCounter counts commit lookups for the maximum height.
+type maxHeightCommitCounter struct {
+	sm.BlockStore
+	loads atomic.Int64
+}
+
+func (s *maxHeightCommitCounter) LoadBlockCommit(height int64) *types.Commit {
+	if height == math.MaxInt64 {
+		s.loads.Add(1)
+	}
+	return s.BlockStore.LoadBlockCommit(height)
+}
+
+// loopCountingPeer counts IsRunning calls, which the gossip routines make once
+// per loop iteration.
+type loopCountingPeer struct {
+	*p2pmock.Peer
+	loops atomic.Int64
+}
+
+func (p *loopCountingPeer) IsRunning() bool {
+	p.loops.Add(1)
+	return p.Peer.IsRunning()
+}
+
+// A peer claiming the maximum height is not behind us, so the vote gossip
+// routine must not try to catch it up.
+func TestGossipVotesRoutineIgnoresPeerAtMaxHeight(t *testing.T) {
+	N := 1
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	defer cleanup()
+	counter := &maxHeightCommitCounter{BlockStore: css[0].blockStore}
+	css[0].blockStore = counter
+	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
+	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
+
+	// The catchup path needs a non-empty block store.
+	select {
+	case <-blocksSubs[0].Out():
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the first block")
+	}
+
+	peer := &loopCountingPeer{Peer: p2pmock.NewPeer(nil)}
+	defer peer.Stop() //nolint:errcheck
+	ps := NewPeerState(peer)
+	ps.ApplyNewRoundStepMessage(&NewRoundStepMessage{Height: math.MaxInt64, Step: cstypes.RoundStepNewHeight})
+
+	go reactors[0].gossipVotesRoutine(peer, ps)
+
+	// Wait for the routine to finish a few iterations.
+	require.Eventually(t, func() bool { return peer.loops.Load() > 3 }, 10*time.Second, time.Millisecond)
+	require.Zero(t, counter.loads.Load())
 }
 
 func TestReactorReceivePanicsIfInitPeerHasntBeenCalledYet(t *testing.T) {

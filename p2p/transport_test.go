@@ -1,12 +1,16 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -716,4 +720,276 @@ func (c *testTransportConn) SetWriteDeadline(_ time.Time) error {
 
 func (c *testTransportConn) Write(_ []byte) (int, error) {
 	return -1, fmt.Errorf("write() not implemented")
+}
+
+// scriptListener returns the errors sent on steps from Accept. A nil step
+// accepts a real connection. Accept blocks until a step arrives or the
+// listener closes.
+type scriptListener struct {
+	net.Listener
+	steps  chan error
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (l *scriptListener) Accept() (net.Conn, error) {
+	select {
+	case err := <-l.steps:
+		if err != nil {
+			return nil, err
+		}
+		return l.Listener.Accept()
+	case <-l.closed:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *scriptListener) Close() error {
+	l.once.Do(func() { close(l.closed) })
+	return l.Listener.Close()
+}
+
+// testSetupScriptTransport starts an accept loop on a scriptListener. The
+// loop calls retryAfter instead of time.After before each retry.
+func testSetupScriptTransport(
+	t *testing.T, retryAfter func(time.Duration) <-chan time.Time,
+) (*MultiplexTransport, *scriptListener, <-chan struct{}) {
+	t.Helper()
+	pv := ed25519.GenPrivKey()
+	id := PubKeyToID(pv.PubKey())
+	mt := newMultiplexTransport(testNodeInfo(id, "transport"), NodeKey{PrivKey: pv})
+	mt.acceptRetryAfter = retryAfter
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl := &scriptListener{Listener: ln, steps: make(chan error, 64), closed: make(chan struct{})}
+	mt.listener = sl
+	mt.netAddr = *NewNetAddress(id, ln.Addr())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mt.acceptPeers()
+	}()
+	t.Cleanup(func() {
+		select {
+		case <-mt.closec:
+		default:
+			_ = mt.Close()
+		}
+		waitDone(t, done, "accept loop did not exit at cleanup")
+	})
+	return mt, sl, done
+}
+
+// recordRetryFn returns a retry wait that sends each delay on delays and
+// fires at once.
+func recordRetryFn(delays chan<- time.Duration) func(time.Duration) <-chan time.Time {
+	return func(d time.Duration) <-chan time.Time {
+		delays <- d
+		c := make(chan time.Time, 1)
+		c <- time.Time{}
+		return c
+	}
+}
+
+func waitDone(t *testing.T, done <-chan struct{}, msg string) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error(msg)
+	}
+}
+
+func emfileErr() error {
+	return &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)}
+}
+
+func TestTransportMultiplexAcceptRetriesTemporaryErrors(t *testing.T) {
+	mt, sl, done := testSetupScriptTransport(t, recordRetryFn(make(chan time.Duration, 64)))
+	enfile := &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.ENFILE)}
+	for _, err := range []error{emfileErr(), emfileErr(), enfile, emfileErr(), nil} {
+		sl.steps <- err
+	}
+
+	errc := make(chan error, 1)
+	go testDialer(mt.NetAddress(), errc)
+
+	acceptc := make(chan error, 1)
+	go func() {
+		p, err := mt.Accept(peerConfig{})
+		if err == nil {
+			mt.Cleanup(p)
+		}
+		acceptc <- err
+	}()
+	select {
+	case err := <-acceptc:
+		if err != nil {
+			t.Fatalf("Accept returned error after temporary accept errors: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Accept")
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, done, "accept loop did not exit after Close")
+}
+
+func TestTransportMultiplexAcceptReturnsFatalError(t *testing.T) {
+	fatal := errors.New("fatal accept error")
+	mt, sl, done := testSetupScriptTransport(t, time.After)
+	sl.steps <- fatal
+
+	acceptc := make(chan error, 1)
+	go func() {
+		_, err := mt.Accept(peerConfig{})
+		acceptc <- err
+	}()
+	select {
+	case err := <-acceptc:
+		if !errors.Is(err, fatal) {
+			t.Fatalf("want %v, got %v", fatal, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Accept")
+	}
+	waitDone(t, done, "accept loop did not exit after fatal error")
+}
+
+func TestTransportMultiplexAcceptStopsOnCloseDuringBackoff(t *testing.T) {
+	waiting := make(chan struct{})
+	var once sync.Once
+	// The wait never fires, so only Close can end it.
+	neverFire := func(time.Duration) <-chan time.Time {
+		once.Do(func() { close(waiting) })
+		return nil
+	}
+	mt, sl, done := testSetupScriptTransport(t, neverFire)
+	sl.steps <- emfileErr()
+
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accept loop did not start the retry wait")
+	}
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, done, "accept loop did not exit after Close during backoff")
+}
+
+func TestTransportMultiplexAcceptFatalErrorStopsOnClose(t *testing.T) {
+	mt, sl, done := testSetupScriptTransport(t, time.After)
+	fatal := &classifiedError{classified: make(chan struct{})}
+	sl.steps <- fatal
+
+	// The loop classifies the error after its closed check and just before
+	// it sends the error to Accept. Nobody calls Accept, so the send waits.
+	select {
+	case <-fatal.classified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accept loop did not classify the fatal error")
+	}
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, done, "accept loop did not exit after Close with a fatal error pending")
+}
+
+// classifiedError is a fatal error that closes classified when
+// isTemporaryAcceptError checks it with errors.As, which is its last check.
+type classifiedError struct {
+	classified chan struct{}
+	once       sync.Once
+}
+
+func (e *classifiedError) Error() string { return "fatal accept error" }
+
+func (e *classifiedError) As(any) bool {
+	e.once.Do(func() { close(e.classified) })
+	return false
+}
+
+func TestIsTemporaryAcceptError(t *testing.T) {
+	wrap := func(errno syscall.Errno) error {
+		return &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", errno)}
+	}
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"EMFILE", wrap(syscall.EMFILE), true},
+		{"ENFILE", wrap(syscall.ENFILE), true},
+		{"ENOBUFS", wrap(syscall.ENOBUFS), true},
+		{"ENOMEM", wrap(syscall.ENOMEM), true},
+		{"temporary net.Error", tempNetError{temporary: true}, true},
+		{"non-temporary net.Error", tempNetError{temporary: false}, false},
+		{"plain error", errors.New("boom"), false},
+		{"closed listener", net.ErrClosed, false},
+		{"nil", nil, false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTemporaryAcceptError(tc.err); got != tc.want {
+				t.Fatalf("isTemporaryAcceptError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// tempNetError is a net.Error whose Temporary result is set by the test.
+type tempNetError struct{ temporary bool }
+
+func (e tempNetError) Error() string   { return "test net error" }
+func (e tempNetError) Timeout() bool   { return false }
+func (e tempNetError) Temporary() bool { return e.temporary }
+
+func TestTransportMultiplexAcceptBackoffSequence(t *testing.T) {
+	delays := make(chan time.Duration, 64)
+	_, sl, _ := testSetupScriptTransport(t, recordRetryFn(delays))
+	recvDelay := func() time.Duration {
+		t.Helper()
+		select {
+		case d := <-delays:
+			return d
+		case <-time.After(5 * time.Second):
+			t.Fatal("accept loop did not wait before retrying")
+			return 0
+		}
+	}
+
+	// Ten errors in a row: the delay doubles from 5ms and stops at 1s.
+	want := []time.Duration{
+		5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond,
+		40 * time.Millisecond, 80 * time.Millisecond, 160 * time.Millisecond,
+		320 * time.Millisecond, 640 * time.Millisecond, time.Second, time.Second,
+	}
+	for i, w := range want {
+		sl.steps <- emfileErr()
+		if got := recvDelay(); got != w {
+			t.Fatalf("retry %d: got delay %v, want %v", i, got, w)
+		}
+	}
+
+	// A successful accept resets the delay.
+	conn, err := net.Dial("tcp", sl.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	sl.steps <- nil
+	sl.steps <- emfileErr()
+	if got := recvDelay(); got != minAcceptRetryDelay {
+		t.Fatalf("after successful accept: got delay %v, want %v", got, minAcceptRetryDelay)
+	}
 }

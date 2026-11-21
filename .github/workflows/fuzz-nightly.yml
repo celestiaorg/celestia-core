@@ -92,6 +92,7 @@ jobs:
           - {package: consensus/propagation/types, target: TxsToPartsMetadata, priority: 1}
           - {package: consensus/propagation/types, target: TxsToParts, priority: 1}
           - {package: consensus/propagation/types, target: TxsToParts_Panic, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToPartsSizes, priority: 1}
           - {package: consensus/propagation, target: PropagationReactor, priority: 1}
           - {package: types, target: BlockFromProto, priority: 1}
           - {package: state, target: BlockExecValidateApply, priority: 1}

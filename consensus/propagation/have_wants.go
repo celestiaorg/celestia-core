@@ -291,7 +291,7 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		Message:   want.ToProto(),
 	}
 
-	if !ps.peer.TrySend(e) {
+	if !ps.RequestParts(want.Height, want.Round, want.Parts, e) {
 		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
@@ -307,8 +307,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		"want",
 	)
 
-	// keep track of the parts that this node has requested.
-	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
 }
 
@@ -376,11 +374,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
 	_, parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
-	// at a committed height only the committed block is useful: a cached entry for
-	// another block must not shadow the store.
+	// at a committed height, only a complete copy of the committed block beats the
+	// store: a want parked on any other entry may never be answered.
 	if has && wants.Prove && committed {
 		meta := blockProp.store.LoadBlockMeta(height)
-		has = meta == nil || parts.Original().Header().Equals(meta.BlockID.PartSetHeader)
+		has = meta == nil || (parts.IsComplete() && parts.Original().Header().Equals(meta.BlockID.PartSetHeader))
 	}
 	if !has && wants.Prove && committed {
 		blockProp.handleStoredWants(p, wants)
@@ -541,7 +539,21 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
+	// checked before admitPart, so a dropped part doesn't use up the peer's push
+	// allowance. A part is still taken after the originals complete: it was
+	// requested, and peers may want it because the request advertised it.
+	if parts.HasPart(int(part.Index)) {
+		return
+	}
+	// catchup entries hold no parity set to add to.
+	if part.Index >= parts.Original().Total() && parts.Parity().Total() == 0 {
+		return
+	}
+
+	// a part we accept without having requested it was pushed to us
+	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
+
+	if p != nil && !blockProp.admitPart(p, part) {
 		return
 	}
 
@@ -590,6 +602,17 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
+	// tell the other peers we have the pushed part, so they can request it.
+	// For a requested part this was already done when the want was sent.
+	if wasPushed {
+		haves := &proptypes.HaveParts{
+			Height: part.Height,
+			Round:  part.Round,
+			Parts:  []proptypes.PartMetaData{{Index: part.Index, Hash: proof.LeafHash}},
+		}
+		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+	}
+
 	// only send original parts to the consensus reactor
 	if part.Index < parts.Original().Total() {
 		select {
@@ -609,78 +632,97 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	go blockProp.clearWants(part, *proof)
 
-	// attempt to decode the remaining block parts. If they are decoded, then
-	// this node should send all the wanted parts that nodes have requested. cp
-	// == nil means that there was no compact block available and this was
-	// during catchup. todo: use the bool found in the state instead of checking
-	// for nil.
-	if parts.CanDecode() {
-		if parts.IsDecoding.Load() {
-			return
-		}
-		parts.IsDecoding.Store(true)
-		defer parts.IsDecoding.Store(false)
-
-		missingOriginalParts := parts.Original().BitArray().Not()
-
-		err := parts.Decode()
-		if err != nil {
-			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
-			return
-		}
-
-		// broadcast haves for all parts since we've decoded the entire block.
-		// rely on the broadcast method to ensure that parts are only sent once.
-		haves := &proptypes.HaveParts{
-			Height: part.Height,
-			Round:  part.Round,
-		}
-
-		for i := uint32(0); i < parts.Total(); i++ {
-			p, has := parts.GetPart(i)
-			if !has {
-				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
-				continue
-			}
-			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
-				select {
-				case <-blockProp.ctx.Done():
-					return
-				case blockProp.partChan <- types.PartInfo{
-					Part: &types.Part{
-						Index: p.Index,
-						Bytes: p.Bytes,
-						Proof: p.GetProof(),
-					},
-					Height: part.Height,
-					Round:  part.Round,
-				}:
-				}
-			}
-			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
-		}
-
-		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
-
-		// clear all the wants if they exist
-		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
-			for i := uint32(0); i < parts.Total(); i++ {
-				p, _ := parts.GetPart(i)
-				pbz := make([]byte, len(p.Bytes))
-				copy(pbz, p.Bytes)
-				msg := &proptypes.RecoveryPart{
-					Height: height,
-					Round:  round,
-					Index:  i,
-					Data:   pbz,
-				}
-				blockProp.clearWants(msg, p.GetProof())
-			}
-		}(part.Height, part.Round, parts)
-
+	// consensus votes on the originals: rebuild the missing ones first, then
+	// build parity in the background so peers can still recover from us.
+	if parts.IsComplete() {
+		go blockProp.buildParity(cb, parts)
 		return
 	}
+	if !parts.CanDecode() || !parts.IsDecoding.CompareAndSwap(false, true) {
+		return
+	}
+	proofs, err := cb.Proofs()
+	if err != nil {
+		parts.IsDecoding.Store(false)
+		blockProp.Logger.Error("failed to get proofs from compact block", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+		return
+	}
+	recovered, err := parts.RecoverOriginals(proofs)
+	parts.IsDecoding.Store(false)
+	if err != nil {
+		blockProp.Logger.Error("failed to recover original parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+	}
+	if len(recovered) == 0 {
+		return
+	}
+	blockProp.publishLocalParts(part.Height, part.Round, recovered)
+	go blockProp.buildParity(cb, parts)
+}
+
+// buildParity encodes the parity of a complete block, serves the wants parked
+// on it and advertises every part.
+func (blockProp *Reactor) buildParity(cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet) {
+	if !parts.IsComplete() || !parts.CanDecode() || parts.Parity().IsComplete() ||
+		!parts.IsDecoding.CompareAndSwap(false, true) {
+		return
+	}
+	defer parts.IsDecoding.Store(false)
+	height, round := cb.Proposal.Height, cb.Proposal.Round
+	if err := parts.BuildParity(); err != nil {
+		blockProp.Logger.Error("failed to build parity", "height", height, "round", round, "error", err)
+		return
+	}
+	for i := parts.Original().Total(); i < parts.Total(); i++ {
+		if p, has := parts.GetPart(i); has {
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: i, Data: p.Bytes}, p.GetProof())
+		}
+	}
+	blockProp.broadcastLocalHaves(cb, parts)
+}
+
+// publishLocalParts hands parts this node added itself to consensus and
+// serves the wants parked on them.
+func (blockProp *Reactor) publishLocalParts(height int64, round int32, parts []*types.Part) {
+	go func() {
+		for _, p := range parts {
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: p.Index, Data: p.Bytes}, p.GetProof())
+		}
+	}()
+	for _, p := range parts {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.partChan <- types.PartInfo{Part: p, Height: height, Round: round}:
+		}
+	}
+}
+
+// broadcastLocalHaves advertises the parts this node holds, never parity it
+// does not hold.
+func (blockProp *Reactor) broadcastLocalHaves(cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet) {
+	held := parts.BitArray()
+	haves := &proptypes.HaveParts{Height: cb.Proposal.Height, Round: cb.Proposal.Round}
+	for _, index := range held.GetTrueIndices() {
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: uint32(index), Hash: cb.PartsHashes[index]})
+	}
+	blockProp.broadcastHaves(haves, blockProp.self, held.Size())
+}
+
+// admitPart reports whether a part from p may be processed: either this node
+// requested it, or p sent the compact block and this is one of the parts it
+// may push. Any other part is dropped. The peer stays connected, because an
+// honest proposer can end up here when its compact block arrives late.
+func (blockProp *Reactor) admitPart(p *PeerState, part *proptypes.RecoveryPart) bool {
+	if p.Requested(part.Height, part.Round, part.Index) {
+		return true
+	}
+
+	if p.ConsumePushAllowance(part.Height, part.Round, part.Index) {
+		return true
+	}
+
+	blockProp.Logger.Debug("dropping unrequested part", "peer", p.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
+	return false
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if

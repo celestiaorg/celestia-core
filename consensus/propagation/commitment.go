@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/types"
 )
@@ -68,7 +67,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
-	// save the compact block locally and broadcast it to the connected peers
+	// save the compact block locally
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
@@ -81,14 +80,48 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
-	initialPartsMeta := []*propagation.PartMetaData{{Index: 0, Hash: parts.Original().GetPart(0).Proof.LeafHash}}
-	if parts.Original().Total() > 1 {
-		lastPart := parts.Original().GetPart(int(parts.Original().Total() - 1))
-		if lastPart != nil {
-			initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: lastPart.Index, Hash: lastPart.Proof.LeafHash})
-		}
+	// push the parts no mempool can rebuild (header, evidence, last commit)
+	original := parts.Original()
+	pushed := make([]*types.Part, 0, maxPushedParts)
+	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
+	uncoveredIndexes := uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen)
+	for _, index := range uncoveredIndexes {
+		pushed = append(pushed, original.GetPart(int(index)))
 	}
+	for _, index := range advertisedOriginalParts(uncoveredIndexes, original.Total()) {
+		part := original.GetPart(int(index))
+		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
+	}
+	cbMsg := cb.ToProto()
 	for index, peer := range peers {
+		// the compact block goes first: it is what lets the peer accept the
+		// pushed parts
+		if !peer.peer.TrySend(p2p.Envelope{ChannelID: DataChannel, Message: cbMsg}) {
+			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
+			continue
+		}
+		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
+
+		// the pushed parts go before the haves, so the peer already holds them
+		// when it reads the haves and doesn't request them again
+		for _, part := range pushed {
+			e := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message: &propagation.RecoveryPart{
+					Height: proposal.Height,
+					Round:  proposal.Round,
+					Index:  part.Index,
+					Data:   part.Bytes,
+					Proof:  *part.Proof.ToProto(),
+				},
+			}
+			if !peer.peer.TrySend(e) {
+				blockProp.Logger.Error("failed to push part", "peer", peer.peer.ID(), "height", proposal.Height, "round", proposal.Round, "part", part.Index)
+				continue
+			}
+			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
+		}
+
 		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
 		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
 		partsMeta = append(partsMeta, chunkedParts...)
@@ -257,14 +290,22 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		}
 	}
 
+	// the peer that sent the compact block may push the parts no mempool can
+	// rebuild
+	if p := blockProp.getPeer(peer); p != nil {
+		p.GrantPushAllowance(cb)
+	}
+
 	if !added {
 		return
 	}
 
-	// forward before recovering locally so peers don't wait on our rebuild.
-	blockProp.broadcastCompactBlock(cb, peer)
-
 	if !proposer {
+		// forward before recovering locally so peers don't wait on our rebuild.
+		// The proposer sends the compact block itself from ProposeBlock,
+		// followed by the parts it pushes.
+		blockProp.broadcastCompactBlock(cb, peer)
+
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
@@ -287,14 +328,9 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			continue
 		}
 
-		protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
-		marshalledTx, err := proto.Marshal(&protoTxs)
-		if err != nil {
-			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
-			continue
-		}
-
-		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
+		// the tx is encoded in the block as an entry of Data.Txs (field 1).
+		prefix := protowire.AppendVarint(protowire.AppendTag(nil, 1, protowire.BytesType), uint64(len(tx.Tx)))
+		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, Prefix: prefix, TxBytes: tx.Tx})
 	}
 
 	if len(txsFound) == 0 {
@@ -324,45 +360,41 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
-	recoveredCount := 0
-	haves := proptypes.HaveParts{
-		Height: cb.Proposal.Height,
-		Round:  cb.Proposal.Round,
-		Parts:  make([]proptypes.PartMetaData, 0),
-	}
+	missing := make([]*types.Part, 0, len(parts))
 	for _, p := range parts {
 		if partSet.HasPart(int(p.Index)) {
 			continue
 		}
 		p.Proof = *proofs[p.Index]
+		missing = append(missing, p)
+	}
+	added, errs := partSet.AddOriginalParts(missing)
 
-		added, err := partSet.AddOriginalPart(p)
-		if err != nil {
-			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+	recovered := make([]*types.Part, 0, len(missing))
+	haves := proptypes.HaveParts{
+		Height: cb.Proposal.Height,
+		Round:  cb.Proposal.Round,
+		Parts:  make([]proptypes.PartMetaData, 0),
+	}
+	for i, p := range missing {
+		if errs[i] != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", errs[i])
 			continue
 		}
 
-		if !added {
+		if !added[i] {
 			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
 			continue
 		}
 
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case blockProp.partChan <- types.PartInfo{
-			Part:   p,
-			Height: cb.Proposal.Height,
-			Round:  cb.Proposal.Round,
-		}:
-		}
-
-		recoveredCount++
-
+		recovered = append(recovered, p)
 		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
 	}
+	// a peer may have asked for one of these parts after a request advertised it.
+	blockProp.publishLocalParts(cb.Proposal.Height, cb.Proposal.Round, recovered)
+	go blockProp.buildParity(cb, partSet)
 
-	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount, time.Since(startTime).Nanoseconds())
+	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, len(recovered), time.Since(startTime).Nanoseconds())
 
 	if len(haves.Parts) > 0 {
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
@@ -460,6 +492,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
+	maxBytes := blockProp.blockMaxBytes
 	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
@@ -488,7 +521,6 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	}
 
 	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := blockProp.BlockMaxBytes
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}

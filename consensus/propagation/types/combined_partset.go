@@ -1,9 +1,14 @@
 package types
 
 import (
+	"bytes"
+	"errors"
 	"math"
+	"runtime"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -120,6 +125,39 @@ func (cps *CombinedPartSet) CanDecode() bool {
 		!cps.catchup
 }
 
+// RecoverOriginals rebuilds only the missing original parts, see
+// types.DecodeOriginals.
+func (cps *CombinedPartSet) RecoverOriginals(proofs []*merkle.Proof) ([]*types.Part, error) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	parts, err := types.DecodeOriginals(cps.original, cps.parity, int(cps.lastLen), proofs)
+	for _, p := range parts {
+		cps.totalMap.SetIndex(int(p.Index), true)
+	}
+	return parts, err
+}
+
+// BuildParity encodes the parity of complete originals, as the proposer did,
+// and keeps it only if it matches the committed parity root. It encodes
+// outside the lock so parts stay servable meanwhile.
+func (cps *CombinedPartSet) BuildParity() error {
+	cps.mtx.Lock()
+	ops, root, wantLastLen := cps.original, cps.parity.Hash(), cps.lastLen
+	cps.mtx.Unlock()
+	eps, lastLen, err := types.Encode(ops, types.BlockPartSizeBytes)
+	if err != nil {
+		return err
+	}
+	if uint32(lastLen) != wantLastLen || !bytes.Equal(eps.Hash(), root) {
+		return errors.New("built parity does not match the compact block")
+	}
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	cps.parity = eps
+	cps.totalMap.Fill()
+	return nil
+}
+
 func (cps *CombinedPartSet) Decode() error {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
@@ -171,6 +209,28 @@ func (cps *CombinedPartSet) AddOriginalPart(part *types.Part) (bool, error) {
 		cps.totalMap.SetIndex(int(part.Index), true)
 	}
 	return added, err
+}
+
+// AddOriginalParts adds original parts with distinct indexes, verifying their
+// proofs concurrently. added[i] and errs[i] are what AddOriginalPart returns for parts[i].
+func (cps *CombinedPartSet) AddOriginalParts(parts []*types.Part) (added []bool, errs []error) {
+	added = make([]bool, len(parts))
+	errs = make([]error, len(parts))
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	var eg errgroup.Group
+	eg.SetLimit(runtime.GOMAXPROCS(0))
+	for i, part := range parts {
+		eg.Go(func() error {
+			added[i], errs[i] = cps.original.AddPart(part)
+			if added[i] {
+				cps.totalMap.SetIndex(int(part.Index), true)
+			}
+			return nil
+		})
+	}
+	_ = eg.Wait()
+	return added, errs
 }
 
 func (cps *CombinedPartSet) HasPart(index int) bool {

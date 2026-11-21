@@ -260,25 +260,15 @@ func BootstrapStateWithGenProvider(ctx context.Context, config *cfg.Config, dbPr
 		return err
 	}
 
-	if err = stateStore.Bootstrap(state); err != nil {
-		return err
-	}
-
+	// The seen commit goes first: once the state is bootstrapped, a restart needs it.
 	err = blockStore.SaveSeenCommit(state.LastBlockHeight, commit)
 	if err != nil {
 		return err
 	}
 
-	// Once the stores are bootstrapped, we need to set the height at which the node has finished
-	// statesyncing. This will allow the blocksync reactor to fetch blocks at a proper height.
-	// In case this operation fails, it is equivalent to a failure in  online state sync where the operator
-	// needs to manually delete the state and blockstores and rerun the bootstrapping process.
-	err = stateStore.SetOfflineStateSyncHeight(state.LastBlockHeight)
-	if err != nil {
-		return fmt.Errorf("failed to set synced height: %w", err)
-	}
-
-	return err
+	// Bootstrap also saves the height at which the node finished state syncing.
+	// This allows the blocksync reactor to fetch blocks at a proper height.
+	return stateStore.Bootstrap(state)
 }
 
 //------------------------------------------------------------------------------
@@ -498,9 +488,13 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
-	err = stateStore.SetOfflineStateSyncHeight(0)
-	if err != nil {
-		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
+	// Keep the state sync height until a block is stored. Until then a restart
+	// still needs it to match the state and the empty block store.
+	if blockStore.Height() > 0 {
+		err = stateStore.SetOfflineStateSyncHeight(0)
+		if err != nil {
+			panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
+		}
 	}
 	if propagationReactor != nil {
 		propagationReactor.SetLogger(logger.With("module", "propagation"))
@@ -527,6 +521,7 @@ func NewNodeWithContext(ctx context.Context,
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	p2pLogger := logger.With("module", "p2p")
+	p2p.MultiplexTransportLogger(p2pLogger)(transport)
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
 		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,

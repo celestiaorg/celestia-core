@@ -16,10 +16,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/abci/example/kvstore"
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/cat"
+	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -152,6 +157,17 @@ func createTestProposal(
 	for i := 0; i < txCount; i++ {
 		txs[i] = randomBytes(txSize)
 	}
+	return createTestProposalFromTxs(t, sm, pv, height, round, txs)
+}
+
+func createTestProposalFromTxs(
+	t testing.TB,
+	sm state.State,
+	pv types.PrivValidator,
+	height int64,
+	round int32,
+	txs []types.Tx,
+) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
 	data := types.Data{
 		Txs: txs,
 	}
@@ -244,6 +260,73 @@ func TestRecoverPartsLocally(t *testing.T) {
 		require.NotNil(t, apart)
 		assert.Equal(t, partSet.GetPart(int(i)).Bytes, apart.Bytes)
 	}
+}
+
+// TestRecoverPartsFromLiveMempool recovers parts from a CAT pool that is
+// concurrently adding and removing txs. Run it with -race.
+func TestRecoverPartsFromLiveMempool(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	appConn, err := proxy.NewLocalClientCreator(kvstore.NewInMemoryApplication()).NewABCIClient()
+	require.NoError(t, err)
+	require.NoError(t, appConn.Start())
+	t.Cleanup(func() { require.NoError(t, appConn.Stop()) })
+	pool := cat.NewTxPool(log.NewNopLogger(), cfg.TestMempoolConfig(), appConn, 1)
+
+	txs := make([]types.Tx, 200)
+	for i := range txs {
+		txs[i] = []byte(fmt.Sprintf("k%d=%s", i, cmtrand.Str(20_000)))
+		require.NoError(t, pool.CheckTx(txs[i], nil, mempool.TxInfo{}))
+	}
+	prop, ps, _, metaData := createTestProposalFromTxs(t, sm, pv, 1, 0, txs)
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+
+	reactor := NewReactor("", Config{
+		Store:         store.NewBlockStore(dbm.NewMemDB()),
+		Mempool:       pool,
+		Privval:       mockPrivVal,
+		ChainID:       sm.ChainID,
+		BlockMaxBytes: sm.ConsensusParams.Block.MaxBytes,
+	})
+	require.NoError(t, reactor.Start())
+	t.Cleanup(func() { require.NoError(t, reactor.Stop()) })
+	reactor.currentProposer = mockPubKey
+	data := &proposalData{compactBlock: cb}
+	reactor.proposals = map[int64]map[int32]*proposalData{1: {0: data}}
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := 0; ; i++ {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			_ = pool.CheckTx([]byte(fmt.Sprintf("new%d=%s", i, cmtrand.Str(1000))), nil, mempool.TxInfo{})
+			if i%2 == 1 && i < len(txs) {
+				_ = pool.RemoveTxByKey(txs[i].Key())
+			}
+		}
+	})
+
+	recovered := 0
+	for range 5 {
+		data.block = proptypes.NewCombinedSetFromCompactBlock(cb)
+		reactor.recoverPartsFromMempool(cb)
+		original := data.block.Original()
+		recovered += int(original.Count())
+		for _, i := range original.BitArray().GetTrueIndices() {
+			require.Equal(t, ps.GetPart(i).Bytes, original.GetPart(i).Bytes)
+		}
+		for len(reactor.partChan) > 0 {
+			<-reactor.partChan
+		}
+	}
+	close(done)
+	wg.Wait()
+	require.NotZero(t, recovered)
 }
 
 var _ Mempool = &mockMempool{}
@@ -403,6 +486,39 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	n2.handleCompactBlock(genuine, n1.self, false)
 	_, _, has = n2.GetProposal(1, 2)
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
+}
+
+// TestValidateCompactBlockUsesUpdatedBlockMaxBytes ensures the parts-count
+// check follows Block.MaxBytes updates without restarting the reactor.
+func TestValidateCompactBlockUsesUpdatedBlockMaxBytes(t *testing.T) {
+	reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+	r := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	signer := types.NewMockPV()
+	r.SetConsensusState(1, 0, signer.PrivKey.PubKey())
+	cb := signedCompactBlock(t, sm, pv, signer, 1, 0)
+
+	// A limit of one part is below the compact block's size.
+	r.SetBlockMaxBytes(int64(types.BlockPartSizeBytes))
+	require.ErrorContains(t, r.validateCompactBlock(cb), "too many parts")
+
+	// Raise the limit as a governance param change would, while validating
+	// concurrently to surface data races.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			_ = r.validateCompactBlock(cb)
+		}
+	}()
+	r.SetBlockMaxBytes(int64(types.MaxBlockSizeBytes))
+	<-done
+	require.NoError(t, r.validateCompactBlock(cb))
 }
 
 // TestProcessValidatedCompactBlockForwardsOnce ensures duplicates of a

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
@@ -135,6 +136,36 @@ func TestPEXReactorReceive(t *testing.T) {
 	assert.Equal(t, size+1, book.Size())
 
 	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+}
+
+// socketAddrPeer is a peer whose socket address differs from the address it advertises.
+type socketAddrPeer struct {
+	p2p.Peer
+	socketAddr *p2p.NetAddress
+}
+
+func (p socketAddrPeer) SocketAddr() *p2p.NetAddress { return p.socketAddr }
+
+func TestPEXReactorUsesSocketAddrAsSource(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	advertised := mock.NewPeer(nil)
+	socketAddr := p2p.CreateRandomPeer(false).SocketAddr()
+	socketAddr.ID = advertised.ID()
+	peer := socketAddrPeer{Peer: advertised, socketAddr: socketAddr}
+
+	// inbound peer
+	r.AddPeer(peer)
+	advertisedAddr, err := p2p.PeerAddress(peer)
+	require.NoError(t, err)
+	assert.Equal(t, socketAddr, book.(*addrBook).addrLookup[advertisedAddr.ID].Src)
+
+	// addresses the peer sends us
+	r.RequestAddrs(peer)
+	addr := p2p.CreateRandomPeer(false).SocketAddr()
+	require.NoError(t, r.ReceiveAddrs([]*p2p.NetAddress{addr}, peer))
+	assert.Equal(t, socketAddr, book.(*addrBook).addrLookup[addr.ID].Src)
 }
 
 func TestPEXReactorRequestMessageAbuse(t *testing.T) {
@@ -893,31 +924,55 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	require.Nil(t, err)
 	defer os.RemoveAll(dir)
 
-	pexR, book := createReactor(&ReactorConfig{})
-	defer teardownReactor(book)
+	// A non-strict book accepts local addresses, so the test does not dial random
+	// internet hosts that may hold the connection open past the dial timeout.
+	book := NewAddrBook(filepath.Join(dir, "addrbook.json"), false)
+	book.SetLogger(log.TestingLogger())
+	pexR := NewReactor(book, &ReactorConfig{})
+	pexR.SetLogger(log.TestingLogger())
 
 	sw := createSwitchAndAddReactors(pexR)
 	sw.SetAddrBook(book)
 
-	peers := make([]*p2p.NetAddress, 3)
-	for i := 0; i < 3; i++ {
-		peer := mock.NewPeer(nil)
-		peerAddr := peer.SocketAddr()
+	peers := closedLocalAddrs(t, 3)
+	for _, peerAddr := range peers {
 		err = book.AddAddress(peerAddr, peerAddr)
 		require.NoError(t, err)
-		peers[i] = peerAddr
 	}
 
 	pexR.SetEnsurePeersPeriod(1 * time.Millisecond)
 
 	pexR.ensurePeers(true)
 
-	time.Sleep(2 * time.Second)
+	// check that we dialed all the peers; dials run in goroutines
+	require.Eventually(t, func() bool {
+		for _, peer := range peers {
+			if pexR.AttemptsToDial(peer) != 1 {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 10*time.Millisecond)
+}
 
-	// check that we dialed all the peers
-	for _, peer := range peers {
-		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
+// closedLocalAddrs returns n distinct closed local ports, which refuse dials at once.
+// All listeners stay open until every port is chosen, so the OS cannot reuse a port.
+func closedLocalAddrs(t *testing.T, n int) []*p2p.NetAddress {
+	t.Helper()
+	listeners := make([]net.Listener, n)
+	addrs := make([]*p2p.NetAddress, n)
+	for i := range addrs {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		listeners[i] = ln
+		tcpAddr := ln.Addr().(*net.TCPAddr)
+		addrs[i] = p2p.NewNetAddressIPPort(tcpAddr.IP, uint16(tcpAddr.Port))
+		addrs[i].ID = p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())
 	}
+	for _, ln := range listeners {
+		require.NoError(t, ln.Close())
+	}
+	return addrs
 }
 
 // createTestAddresses creates a slice of NetAddress for testing
@@ -1099,4 +1154,66 @@ func TestPEXReactorReceiveAddrsFromHostNamePeer(t *testing.T) {
 	assert.True(t, book.HasAddress(addr))
 	assert.False(t, r.requestsSent.Has(string(peer.ID())))
 	assert.True(t, sw.Peers().Has(peer.ID()), "peer must not be disconnected")
+}
+
+// fullQueuePeer is a mock peer whose send queue is full: Send waits until
+// the test releases it, and TrySend returns false at once.
+type fullQueuePeer struct {
+	*mock.Peer
+	release  chan struct{}
+	trySends chan struct{}
+}
+
+func newFullQueuePeer() *fullQueuePeer {
+	return &fullQueuePeer{
+		Peer:     mock.NewPeer(nil),
+		release:  make(chan struct{}),
+		trySends: make(chan struct{}, 10),
+	}
+}
+
+func (p *fullQueuePeer) Send(p2p.Envelope) bool {
+	<-p.release
+	return false
+}
+
+func (p *fullQueuePeer) TrySend(p2p.Envelope) bool {
+	p.trySends <- struct{}{}
+	return false
+}
+
+func TestReceiveDoesNotBlockOnSlowPeer(t *testing.T) {
+	testCases := []struct {
+		name     string
+		seedMode bool
+	}{
+		{name: "default", seedMode: false},
+		{name: "seed mode", seedMode: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, book := createReactor(&ReactorConfig{SeedMode: tc.seedMode})
+			defer teardownReactor(book)
+			sw := createSwitchAndAddReactors(r)
+			sw.SetAddrBook(book)
+
+			peer := newFullQueuePeer()
+			defer close(peer.release)
+			p2p.AddPeerToSwitchPeerSet(sw, peer)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Receive did not return while the peer's send queue was full")
+			}
+			require.Len(t, peer.trySends, 1, "the reply should use TrySend")
+		})
+	}
 }

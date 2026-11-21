@@ -157,9 +157,9 @@ func (params ConsensusParams) ValidateBasic() error {
 
 			params.Block.MaxBytes)
 	}
-	if params.Block.MaxBytes > int64(MaxBlockSizeBytes) {
+	if params.Block.MaxBytes > DefaultMaxBlockSizeBytes {
 		return fmt.Errorf("block.MaxBytes is too big. %d > %d",
-			params.Block.MaxBytes, MaxBlockSizeBytes)
+			params.Block.MaxBytes, DefaultMaxBlockSizeBytes)
 	}
 
 	if params.Block.MaxGas < -1 {
@@ -179,7 +179,7 @@ func (params ConsensusParams) ValidateBasic() error {
 
 	maxBytes := params.Block.MaxBytes
 	if maxBytes == -1 {
-		maxBytes = int64(MaxBlockSizeBytes)
+		maxBytes = DefaultMaxBlockSizeBytes
 	}
 	if params.Evidence.MaxBytes > maxBytes {
 		return fmt.Errorf("evidence.MaxBytesEvidence is greater than upper bound, %d > %d",

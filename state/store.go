@@ -285,6 +285,12 @@ func (store dbStore) Bootstrap(state State) error {
 		return err
 	}
 
+	// Saved with the state, so a restart before the first block is stored
+	// still knows the height block sync starts from.
+	if err := batch.Set(offlineStateSyncHeight, int64ToBytes(state.LastBlockHeight)); err != nil {
+		return err
+	}
+
 	if err := batch.WriteSync(); err != nil {
 		panic(err)
 	}

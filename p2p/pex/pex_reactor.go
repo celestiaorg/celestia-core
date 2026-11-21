@@ -211,8 +211,9 @@ func (r *Reactor) AddPeer(p Peer) {
 			return
 		}
 
-		// Make it explicit that addr and src are the same for an inbound peer.
-		src := addr
+		// An inbound peer is its own source. Use the address we see, because
+		// the advertised one is not authenticated.
+		src := p.SocketAddr()
 
 		// add to book. dont RequestAddrs right away because
 		// we don't trust inbound as much - let ensurePeersRoutine handle it.
@@ -370,7 +371,9 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 
 	for _, netAddr := range addrs {
 		// NOTE: we check netAddr validity and routability in book#AddAddress.
-		err = r.book.AddAddress(netAddr, srcAddr)
+		// The source is the address we see, because the advertised one is not
+		// authenticated.
+		err = r.book.AddAddress(netAddr, src.SocketAddr())
 		if err != nil {
 			r.logErrAddrBook(err)
 			// XXX: should we be strict about incoming data and disconnect from a
@@ -393,14 +396,18 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 	return nil
 }
 
-// SendAddrs sends addrs to the peer.
+// SendAddrs sends addrs to the peer. It is called from Receive, so it uses a
+// non-blocking send: a slow peer cannot hold up Receive. The response is
+// dropped if the peer's send queue is full, and the peer asks again later.
 func (r *Reactor) SendAddrs(p Peer, netAddrs []*p2p.NetAddress) {
 	msg := capAddresses(netAddrs)
 	e := p2p.Envelope{
 		ChannelID: PexChannel,
 		Message:   msg,
 	}
-	p.Send(e)
+	if !p.TrySend(e) {
+		r.Logger.Debug("Dropped PEX addresses, send queue is full", "peer", p.ID())
+	}
 }
 
 // safeMaxAddressEstimationMargin is a factor used to estimate the maximum number of addresses fitting into a size limit.

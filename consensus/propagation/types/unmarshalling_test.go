@@ -1,8 +1,10 @@
 package types
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"slices"
 	"testing"
 	"time"
 
@@ -254,14 +256,58 @@ func deterministicBlockTxs(t testing.TB, seed int64, sizes []int) (*types.PartSe
 	return partSet, txsFound
 }
 
-// checkTxsToParts runs TxsToParts on subset and requires every returned part
-// to equal the block's part at that index.
+// checkTxsToParts runs TxsToParts on subset, with each tx's encoding passed
+// whole and split into its prefix and tx bytes, and requires it to return
+// exactly the block's parts that subset fully covers.
 func checkTxsToParts(t *testing.T, partSet *types.PartSet, subset []UnmarshalledTx) {
 	lastPart := partSet.GetPart(int(partSet.Total() - 1))
-	parts, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
-	require.NoError(t, err)
-	for _, part := range parts {
-		require.Equal(t, partSet.GetPart(int(part.Index)).Bytes, part.Bytes)
+	want := coveredParts(subset, partSet.Total(), uint32(len(lastPart.Bytes)))
+
+	split := make([]UnmarshalledTx, len(subset))
+	for i, tx := range subset {
+		_, n := binary.Uvarint(tx.TxBytes[1:])
+		split[i] = tx
+		split[i].Prefix, split[i].TxBytes = tx.TxBytes[:1+n], tx.TxBytes[1+n:]
+	}
+
+	for _, txs := range [][]UnmarshalledTx{subset, split} {
+		parts, err := TxsToParts(txs, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
+		got := make([]uint32, 0, len(parts))
+		for _, part := range parts {
+			got = append(got, part.Index)
+			require.Equal(t, partSet.GetPart(int(part.Index)).Bytes, part.Bytes)
+		}
+		require.Equal(t, want, got)
+	}
+}
+
+// coveredParts returns, in order, the indexes of the parts whose bytes all
+// lie within the txs.
+func coveredParts(txs []UnmarshalledTx, total, lastLen uint32) []uint32 {
+	in := make([]bool, (total-1)*types.BlockPartSizeBytes+lastLen)
+	for _, tx := range txs {
+		for j := tx.MetaData.Start; j < tx.MetaData.End; j++ {
+			in[j] = true
+		}
+	}
+	covered := make([]uint32, 0, total)
+	for i := range total {
+		start := i * types.BlockPartSizeBytes
+		end := min(start+types.BlockPartSizeBytes, uint32(len(in)))
+		if !slices.Contains(in[start:end], false) {
+			covered = append(covered, i)
+		}
+	}
+	return covered
+}
+
+// TestTxsToPartsPrefixAcrossParts covers parts that start inside a tx's prefix.
+func TestTxsToPartsPrefixAcrossParts(t *testing.T) {
+	// the third tx's 4-byte prefix starts 2 and 1 bytes before a part boundary.
+	for _, sizes := range [][]int{{65230, 200, 70000}, {65231, 200, 70000}} {
+		partSet, txs := deterministicBlockTxs(t, 1, sizes)
+		checkTxsToParts(t, partSet, txs)
 	}
 }
 
@@ -278,6 +324,31 @@ func FuzzTxsToParts(f *testing.F) {
 	f.Add(uint16(0))
 	f.Add(uint16(0xffff))
 	f.Fuzz(func(t *testing.T, mask uint16) {
+		var subset []UnmarshalledTx
+		for i := range txsFound {
+			if mask&(1<<i) != 0 {
+				subset = append(subset, txsFound[i])
+			}
+		}
+		checkTxsToParts(t, partSet, subset)
+	})
+}
+
+// FuzzTxsToPartsSizes is FuzzTxsToParts over blocks of fuzzed tx sizes,
+// including empty txs and ones spanning several parts.
+func FuzzTxsToPartsSizes(f *testing.F) {
+	f.Add([]byte{0, 1, 2, 3}, uint64(0b1011))
+	f.Add([]byte{255, 0, 128, 7, 64}, uint64(0b11110))
+	f.Fuzz(func(t *testing.T, rawSizes []byte, mask uint64) {
+		if len(rawSizes) == 0 || len(rawSizes) > 64 {
+			return
+		}
+		sizes := make([]int, len(rawSizes))
+		for i, b := range rawSizes {
+			// up to ~4 parts, with sizes either side of the 1- and 2-byte varint boundaries.
+			sizes[i] = int(b) * int(b) * 4
+		}
+		partSet, txsFound := deterministicBlockTxs(t, int64(len(rawSizes)), sizes)
 		var subset []UnmarshalledTx
 		for i := range txsFound {
 			if mask&(1<<i) != 0 {

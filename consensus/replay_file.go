@@ -268,7 +268,7 @@ func (pb *playback) replayConsoleLoop() int {
 				case "locked_round":
 					fmt.Println(rs.LockedRound)
 				case "locked_block":
-					fmt.Printf("%v %v\n", rs.LockedBlockParts.StringShort(), rs.LockedBlock.StringShort())
+					fmt.Printf("%v %v\n", rs.LockedBlockID, rs.LockedBlock.StringShort())
 				case "votes":
 					fmt.Println(rs.Votes.StringIndented("  "))
 

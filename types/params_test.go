@@ -51,6 +51,20 @@ func TestConsensusParamsValidation(t *testing.T) {
 	}
 }
 
+// Legacy block propagation lowers MaxBlockSizeBytes. Params the chain already
+// uses must stay valid after that.
+func TestConsensusParamsValidationWithReducedMaxBlockSize(t *testing.T) {
+	defer func(old int) { MaxBlockSizeBytes = old }(MaxBlockSizeBytes)
+	MaxBlockSizeBytes = ReducedMaxBlockSizeBytes
+
+	params := makeParams(32*1024*1024, 0, 2, 0, valEd25519, 0)
+	require.NoError(t, params.ValidateBasic())
+
+	// Unlimited block size with evidence above the reduced limit.
+	params = makeParams(-1, 0, 2, 16*1024*1024, valEd25519, 0)
+	require.NoError(t, params.ValidateBasic())
+}
+
 func makeParams(
 	blockBytes, blockGas int64,
 	evidenceAge int64,

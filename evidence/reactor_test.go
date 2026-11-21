@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -188,6 +189,92 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 		peerEv, _ := pools[1].PendingEvidence(-1)
 		assert.EqualValues(c, expectedEvidence, peerEv)
 	}, timeout, 10*time.Millisecond)
+}
+
+// A node on an older version, or one that restored evidence from its store or
+// took it from a block, can hold several valid pieces of duplicate vote
+// evidence for one validator and height, some of them not in canonical form or
+// already committed by the receiver. Relaying them must not get the node
+// disconnected: only evidence that fails verification may.
+func TestReactorKeepsPeerRelayingDuplicateVoteVariants(t *testing.T) {
+	config := cfg.TestConfig()
+	val := types.NewMockPV()
+	height := int64(20)
+	evTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	reactors, pools := makeAndConnectReactorsAndPools(config, []sm.Store{
+		initializeValidatorState(val, height),
+		initializeValidatorState(val, height),
+	})
+	for _, r := range reactors {
+		for _, peer := range r.Switch.Peers().List() {
+			peer.Set(types.PeerStateKey, peerState{height})
+		}
+	}
+
+	newEvidence := func(h int64) *types.DuplicateVoteEvidence {
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(h, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		return ev
+	}
+
+	// The receiver has already committed evidence against the validator at
+	// height 6.
+	committed := newEvidence(6)
+	require.NoError(t, pools[1].CheckEvidence(types.EvidenceList{committed}))
+	state := pools[1].State()
+	state.LastBlockHeight++
+	pools[1].Update(state, types.EvidenceList{committed})
+	require.Zero(t, pools[1].Size())
+
+	withIndex := func(ev *types.DuplicateVoteEvidence, idx int32) *types.DuplicateVoteEvidence {
+		ev.VoteA.ValidatorIndex = idx
+		return ev
+	}
+	withExtension := func(ev *types.DuplicateVoteEvidence) *types.DuplicateVoteEvidence {
+		ev.VoteB.Extension = []byte("extension")
+		ev.VoteB.ExtensionSignature = []byte("signature")
+		return ev
+	}
+	variants := []types.Evidence{
+		// Several valid variants for height 5.
+		newEvidence(5),
+		newEvidence(5),
+		withIndex(newEvidence(5), 1),
+		withExtension(newEvidence(5)),
+		// Valid evidence that is not in canonical form, as the first
+		// evidence for its height.
+		withIndex(newEvidence(8), 1),
+		withExtension(newEvidence(9)),
+		// Variants of evidence the receiver has committed.
+		newEvidence(6),
+		committed,
+	}
+	for _, ev := range variants {
+		require.NoError(t, pools[0].AddEvidenceUnchecked(ev))
+	}
+	// Evidence is gossiped in order, so once the receiver has this one it has
+	// processed all of the above.
+	last := newEvidence(7)
+	require.NoError(t, pools[0].AddEvidence(last))
+
+	// Stop waiting early if the sender is disconnected.
+	require.Eventually(t, func() bool {
+		if reactors[1].Switch.Peers().Size() == 0 {
+			return true
+		}
+		evs, _ := pools[1].PendingEvidence(-1)
+		for _, ev := range evs {
+			if bytes.Equal(ev.Hash(), last.Hash()) {
+				return true
+			}
+		}
+		return false
+	}, timeout, 10*time.Millisecond)
+
+	assert.Len(t, reactors[0].Switch.Peers().List(), 1, "sender must stay connected")
+	assert.Len(t, reactors[1].Switch.Peers().List(), 1, "receiver must keep the sender")
+	evs, _ := pools[1].PendingEvidence(-1)
+	assert.Len(t, evs, 4, "one piece of evidence per validator and height, none for the committed one")
 }
 
 func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {

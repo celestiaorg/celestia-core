@@ -352,20 +352,20 @@ func validatePrecommit(
 
 	rs := cs.GetRoundState()
 	if lockedBlockHash == nil {
-		if rs.LockedRound != lockRound || rs.LockedBlock != nil {
+		if rs.LockedRound != lockRound || rs.IsLocked() {
 			panic(fmt.Sprintf(
 				"Expected to be locked on nil at round %d. Got locked at round %d with block %v",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock))
+				rs.LockedBlockID))
 		}
 	} else {
-		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlock.Hash(), lockedBlockHash) {
+		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlockID.Hash, lockedBlockHash) {
 			panic(fmt.Sprintf(
 				"Expected block to be locked on round %d, got %d. Got locked block %X, expected %X",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock.Hash(),
+				rs.LockedBlockID.Hash,
 				lockedBlockHash))
 		}
 	}
@@ -508,6 +508,13 @@ func randStateWithAppWithHeight(
 }
 func randStateWithApp(nValidators int, app abci.Application) (*State, []*validatorStub) {
 	c := test.ConsensusParams()
+	return randStateWithAppImpl(nValidators, app, c)
+}
+
+// randStateWithAppVersion is randStateWithApp with a genesis app version.
+func randStateWithAppVersion(nValidators int, app abci.Application, appVersion uint64) (*State, []*validatorStub) {
+	c := test.ConsensusParams()
+	c.Version.App = appVersion
 	return randStateWithAppImpl(nValidators, app, c)
 }
 
@@ -994,8 +1001,11 @@ func newMockTickerFunc(onlyOnce bool) func() TimeoutTicker {
 	}
 }
 
+// mockTickerLateNewHeight is when an onlyOnce mock ticker fires a later height's timeout.
+const mockTickerLateNewHeight = 5 * time.Second
+
 // mock ticker only fires on RoundStepNewHeight
-// and only once if onlyOnce=true
+// and only once if onlyOnce=true, then late
 type mockTicker struct {
 	c chan timeoutInfo
 
@@ -1015,13 +1025,22 @@ func (m *mockTicker) Stop() error {
 func (m *mockTicker) ScheduleTimeout(ti timeoutInfo) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	if m.onlyOnce && m.fired {
+	if ti.Step != cstypes.RoundStepNewHeight {
 		return
 	}
-	if ti.Step == cstypes.RoundStepNewHeight {
-		m.c <- ti
-		m.fired = true
+	if m.onlyOnce && m.fired {
+		// A node that got every precommit before the block has nothing left to start the
+		// height; fire late so the all-precommits skip still wins whenever it can.
+		time.AfterFunc(mockTickerLateNewHeight, func() {
+			select {
+			case m.c <- ti:
+			default:
+			}
+		})
+		return
 	}
+	m.c <- ti
+	m.fired = true
 }
 
 func (m *mockTicker) Chan() <-chan timeoutInfo {

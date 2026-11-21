@@ -16,6 +16,7 @@ import (
 
 	"github.com/celestiaorg/go-square/v4/share"
 	squaretx "github.com/celestiaorg/go-square/v4/tx"
+	gokitmetrics "github.com/go-kit/kit/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -272,6 +273,31 @@ func TestTxPool_Recheck(t *testing.T) {
 	newTxs := checkTxs(t, txmp, 3, 0)
 	require.Equal(t, 8, txmp.Size()) // 5 remaining + 3 new = 8
 	require.Len(t, newTxs, 3)
+}
+
+// histogramRecorder records every observed value.
+type histogramRecorder struct{ v []float64 }
+
+func (h *histogramRecorder) With(...string) gokitmetrics.Histogram { return h }
+func (h *histogramRecorder) Observe(v float64)                     { h.v = append(h.v, v) }
+
+func TestTxPool_RecheckMetrics(t *testing.T) {
+	metrics := mempool.NopMetrics()
+	recheckDuration := &histogramRecorder{}
+	metrics.RecheckDurationSeconds = recheckDuration
+	txmp := setup(t, 0, WithMetrics(metrics))
+	txmp.config.Recheck = true
+
+	txs := checkTxs(t, txmp, 10, 0)
+	committed := []*types.CachedTx{{Tx: txs[0].tx}, {Tx: txs[1].tx}}
+	responses := []*abci.ExecTxResult{{Code: abci.CodeTypeOK}, {Code: abci.CodeTypeOK}}
+
+	txmp.Lock()
+	require.NoError(t, txmp.Update(1, committed, responses, nil, nil))
+	txmp.Unlock()
+
+	require.Equal(t, 8, txmp.Size())
+	require.Len(t, recheckDuration.v, 1)
 }
 
 // TestTxPool_RecheckConcurrency tests that recheck works correctly under
@@ -851,7 +877,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 		// Trigger an update so that pruning will occur.
 		txmp.Lock()
 		defer txmp.Unlock()
-		require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
+		require.NoError(t, txmp.Update(txmp.height.Load()+1, nil, nil, nil, nil))
 
 		// All the transactions in the original set should have been purged.
 		for _, tx := range added1 {
@@ -883,7 +909,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 
 func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	txmp := setup(t, 500)
-	txmp.height = 100
+	txmp.height.Store(100)
 	txmp.config.TTLNumBlocks = 10
 
 	tTxs := checkTxs(t, txmp, 100, 0)
@@ -897,7 +923,7 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(txmp.height+1, reapedTxs, responses, nil, nil))
+	require.NoError(t, txmp.Update(txmp.height.Load()+1, reapedTxs, responses, nil, nil))
 	txmp.Unlock()
 
 	require.Equal(t, 95, txmp.Size())
@@ -921,10 +947,27 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(txmp.height+10, reapedTxs, responses, nil, nil))
+	require.NoError(t, txmp.Update(txmp.height.Load()+10, reapedTxs, responses, nil, nil))
 	txmp.Unlock()
 
 	require.GreaterOrEqual(t, txmp.Size(), 45)
+}
+
+// Height must not wait on txmp.mtx, which Update and recheck hold for long.
+func TestTxPool_HeightWithoutLock(t *testing.T) {
+	txmp := setup(t, 0)
+	txmp.Lock()
+	got := make(chan int64, 1)
+	go func() { got <- txmp.Height() }()
+	select {
+	case h := <-got:
+		require.Equal(t, int64(1), h)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Height blocked on the pool mutex")
+	}
+	require.NoError(t, txmp.Update(5, nil, nil, nil, nil))
+	txmp.Unlock()
+	require.Equal(t, int64(5), txmp.Height())
 }
 
 func TestTxPool_CheckTxPostCheckError(t *testing.T) {
