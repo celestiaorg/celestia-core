@@ -237,6 +237,16 @@ func verifyCommitBatch(
 		return fmt.Errorf("unsupported signature algorithm or insufficient signatures for batch verification")
 	}
 
+	// celestia prototype: accept-only parallel pass. On anything other than
+	// acceptance, fall through to the unchanged sequential code below.
+	if parallelCommitVerifyEnabled.Load() && countAllSignatures && lookUpByIndex {
+		accepted := tryParallelVerifyCommitBatch(chainID, vals, commit, votingPowerNeeded, ignoreSig, countSig)
+		recordParallelOutcome(accepted)
+		if accepted {
+			return nil
+		}
+	}
+
 	for idx, commitSig := range commit.Signatures {
 		// skip over signatures that should be ignored
 		if ignoreSig(commitSig) {
