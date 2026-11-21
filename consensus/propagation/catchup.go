@@ -323,6 +323,11 @@ func (blockProp *Reactor) grantPushToCachedSenders(peers []*PeerState, applied *
 			if err := blockProp.validateCompactBlock(cached); err != nil {
 				continue
 			}
+			// the signature does not cover the part hashes from app version
+			// 12, so check them against the signed roots as well.
+			if _, err := cached.Proofs(); err != nil {
+				continue
+			}
 		}
 
 		peer.GrantPushAllowance(applied)

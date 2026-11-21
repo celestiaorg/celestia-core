@@ -1014,6 +1014,9 @@ func (cs *State) updateToState(state sm.State) {
 	// Block.MaxBytes can change through governance; keep the propagator's
 	// compact block size check on the limit for the new height.
 	cs.propagator.SetBlockMaxBytes(state.ConsensusParams.Block.MaxBytes)
+	// The app version can change through an upgrade; keep the propagator's
+	// compact block signature format on the version for the new height.
+	cs.propagator.SetAppVersion(state.Version.Consensus.App)
 
 	// Finally, broadcast RoundState
 	cs.newStep()

@@ -25,6 +25,9 @@ type Propagator interface {
 	// SetBlockMaxBytes installs the Block.MaxBytes consensus param that
 	// applies to the height consensus is entering.
 	SetBlockMaxBytes(maxBytes int64)
+	// SetAppVersion installs the app version that applies to the height
+	// consensus is entering.
+	SetAppVersion(appVersion uint64)
 	StartProcessing()
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
@@ -94,6 +97,9 @@ func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) 
 }
 
 func (nop *NoOpPropagator) SetBlockMaxBytes(_ int64) {
+}
+
+func (nop *NoOpPropagator) SetAppVersion(_ uint64) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {

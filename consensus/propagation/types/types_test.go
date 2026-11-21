@@ -1077,3 +1077,96 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 		},
 	}
 }
+
+// newDigestTestCompactBlock returns a compact block with every signed field
+// set and txCount tx metadata entries.
+func newDigestTestCompactBlock(txCount int) *CompactBlock {
+	txMetaData := make([]TxMetaData, 0, txCount)
+	for i := 0; i < txCount; i++ {
+		start := uint32(i * 10)
+		txMetaData = append(txMetaData, TxMetaData{
+			Hash:  rand.Bytes(tmhash.Size),
+			Start: start,
+			End:   start + 10,
+		})
+	}
+
+	return &CompactBlock{
+		BpHash: rand.Bytes(tmhash.Size),
+		Blobs:  txMetaData,
+		Proposal: types.Proposal{
+			Height:    10,
+			Round:     1,
+			Signature: []byte("proposal_signature"),
+		},
+		LastLen:     42,
+		PartsHashes: generateRandomByteSlices(tmhash.Size, 4),
+	}
+}
+
+// TestDigestSignBytes_CoversSignedFields ensures that changing any field the
+// signature must cover changes the digest sign bytes.
+func TestDigestSignBytes_CoversSignedFields(t *testing.T) {
+	testCases := []struct {
+		name   string
+		mutate func(cb *CompactBlock)
+	}{
+		{"proposal", func(cb *CompactBlock) { cb.Proposal.Height++ }},
+		{"bp hash", func(cb *CompactBlock) { cb.BpHash = rand.Bytes(tmhash.Size) }},
+		{"last length", func(cb *CompactBlock) { cb.LastLen++ }},
+		{"tx hash", func(cb *CompactBlock) { cb.Blobs[0].Hash = rand.Bytes(tmhash.Size) }},
+		{"tx start", func(cb *CompactBlock) { cb.Blobs[0].Start++ }},
+		{"tx end", func(cb *CompactBlock) { cb.Blobs[0].End++ }},
+		{"tx order", func(cb *CompactBlock) { cb.Blobs[0], cb.Blobs[1] = cb.Blobs[1], cb.Blobs[0] }},
+		{"tx removed", func(cb *CompactBlock) { cb.Blobs = cb.Blobs[:len(cb.Blobs)-1] }},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cb := newDigestTestCompactBlock(3)
+			before, err := cb.DigestSignBytes()
+			require.NoError(t, err)
+
+			tc.mutate(cb)
+
+			after, err := cb.DigestSignBytes()
+			require.NoError(t, err)
+			require.NotEqual(t, before, after)
+		})
+	}
+}
+
+// TestDigestSignBytes_LeavesOutPartsHashes ensures the digest sign bytes do
+// not depend on PartsHashes, which the signed roots commit to instead.
+func TestDigestSignBytes_LeavesOutPartsHashes(t *testing.T) {
+	cb := newDigestTestCompactBlock(3)
+	before, err := cb.DigestSignBytes()
+	require.NoError(t, err)
+
+	cb.PartsHashes = generateRandomByteSlices(tmhash.Size, 8)
+
+	after, err := cb.DigestSignBytes()
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+// TestDigestSignBytes_SizeDoesNotGrow ensures the digest sign bytes stay the
+// same size however many transactions and parts the block has, unlike the
+// full sign bytes.
+func TestDigestSignBytes_SizeDoesNotGrow(t *testing.T) {
+	small := newDigestTestCompactBlock(1)
+	large := newDigestTestCompactBlock(1000)
+	large.BpHash = small.BpHash
+	large.PartsHashes = generateRandomByteSlices(tmhash.Size, 4096)
+
+	smallDigest, err := small.DigestSignBytes()
+	require.NoError(t, err)
+	largeDigest, err := large.DigestSignBytes()
+	require.NoError(t, err)
+	require.Len(t, largeDigest, len(smallDigest))
+
+	largeFull, err := large.SignBytes()
+	require.NoError(t, err)
+	require.Less(t, len(largeDigest), 512)
+	require.Greater(t, len(largeFull), 100_000)
+}

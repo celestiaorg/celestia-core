@@ -62,7 +62,9 @@ func (t *TxMetaData) ValidateBasic() error {
 // CompactBlock contains commitments and metadata for reusing transactions that
 // have already been distributed.
 type CompactBlock struct {
-	// BpHash is the block propagation hash. It's the root of the mekle tree where the leaves are the concatenation of the original partset elements and the parity one.
+	// BpHash is the block propagation hash. It's the merkle root of the parity
+	// part set. The original parts are committed to by the PartSetHeader hash
+	// in the proposal.
 	BpHash    []byte         `json:"bp_hash,omitempty"`
 	Blobs     []TxMetaData   `json:"blobs,omitempty"`
 	Signature []byte         `json:"signature,omitempty"`
@@ -98,6 +100,44 @@ func (c *CompactBlock) SignBytes() ([]byte, error) {
 		return nil, err
 	}
 	return signBytes, nil
+}
+
+// DigestSignBytes returns the fixed-size sign bytes used from app version 12:
+// the proposal, BpHash and last part length, followed by a hash of the tx
+// metadata. PartsHashes are left out because the PartSetHeader hash and the
+// BpHash already commit to them.
+func (c *CompactBlock) DigestSignBytes() ([]byte, error) {
+	txMetaDataHash, err := hashTxMetaData(c.Blobs)
+	if err != nil {
+		return nil, err
+	}
+
+	protoCompactBlock := &protoprop.CompactBlock{
+		BpHash:     c.BpHash,
+		Proposal:   c.Proposal.ToProto(),
+		LastLength: c.LastLen,
+	}
+	signBytes, err := protoio.MarshalDelimited(protoCompactBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	signBytes = append(signBytes, txMetaDataHash...)
+	return signBytes, nil
+}
+
+// hashTxMetaData returns one hash covering every tx metadata entry (tx hash,
+// start and end), so changing any entry changes the hash.
+func hashTxMetaData(txMetaData []TxMetaData) ([]byte, error) {
+	encodedEntries := make([]byte, 0)
+	for _, entry := range txMetaData {
+		encodedEntry, err := protoio.MarshalDelimited(entry.ToProto())
+		if err != nil {
+			return nil, err
+		}
+		encodedEntries = append(encodedEntries, encodedEntry...)
+	}
+	return tmhash.Sum(encodedEntries), nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
