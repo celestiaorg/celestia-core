@@ -736,15 +736,7 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
 // It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
 // buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
-//
-// Signer/sequence from a SeenTx is unverified, so when different txs are
-// queued at one sequence the scan cannot tell which claim is true. It
-// requests each of them, so a claim for one tx does not stop the request
-// for another. Requests stay bounded: the scan reads at most the signer's
-// queue (seenPerSignerLimit entries), goes less than maxReceivedBufferSize
-// sequences ahead, and requestTx asks each peer for at most
-// maxRequestsPerPeer txs. A tx is only requested from peers that said they
-// have it.
+// SeenTx metadata is unverified, so every tx queued at a sequence is requested, within the look-ahead and per-peer limits.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
