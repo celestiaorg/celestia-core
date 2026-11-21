@@ -187,7 +187,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		pool.mtx.Lock()
 
 		var (
-			maxRequestersCreated = len(pool.requesters) >= defaultMaxRequesters
+			maxRequestersCreated = len(pool.requesters) >= maxRequesters
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
