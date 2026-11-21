@@ -19,8 +19,8 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
 
 * `abci_query` no longer forwards the `custom/txInclusionProof` and
   `custom/shareInclusionProof` paths to the application and returns an error
-  instead. Use the `tx` (with `prove=true`), `tx_search` or `prove_shares_v2`
-  routes to get inclusion proofs.
+  instead. Use `tx` or `tx_search` (both with `prove=true`), or
+  `prove_shares_v2` to get inclusion proofs.
 
 ### Go API
 
