@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sync"
 	"time"
@@ -773,12 +774,92 @@ func (c *Client) DataRootInclusionProof(ctx context.Context, height, start, end 
 	return c.next.DataRootInclusionProof(ctx, height, start, end)
 }
 
+// ProveShares calls rpcclient#ProveShares and verifies the returned proof
+// against the light-verified data root at height.
 func (c *Client) ProveShares(ctx context.Context, height, start, end uint64) (types.ShareProof, error) {
-	return c.next.ProveShares(ctx, height, start, end)
+	h, err := shareProofHeight(height)
+	if err != nil {
+		return types.ShareProof{}, err
+	}
+	proof, err := c.next.ProveShares(ctx, height, start, end)
+	if err != nil {
+		return types.ShareProof{}, err
+	}
+	if err := c.verifyShareProof(ctx, proof, h, start, end); err != nil {
+		return types.ShareProof{}, err
+	}
+	return proof, nil
 }
 
+// ProveSharesV2 calls rpcclient#ProveSharesV2 and verifies the returned proof
+// against the light-verified data root at height.
 func (c *Client) ProveSharesV2(ctx context.Context, height, start, end uint64) (*ctypes.ResultShareProof, error) {
-	return c.next.ProveSharesV2(ctx, height, start, end)
+	h, err := shareProofHeight(height)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.next.ProveSharesV2(ctx, height, start, end)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, errors.New("nil share proof response")
+	}
+	if err := c.verifyShareProof(ctx, res.ShareProof, h, start, end); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func shareProofHeight(height uint64) (int64, error) {
+	if height == 0 || height > math.MaxInt64 {
+		return 0, fmt.Errorf("invalid height %d", height)
+	}
+	return int64(height), nil
+}
+
+// verifyShareProof checks that proof covers exactly the requested shares
+// [start, end) and that it verifies against the data root of the light-verified
+// header at height.
+func (c *Client) verifyShareProof(ctx context.Context, proof types.ShareProof, height int64, start, end uint64) error {
+	// Bind the response to the request before any light-client work: an
+	// upstream can otherwise return a genuine proof for other shares.
+	if err := shareProofCoversRange(proof, start, end); err != nil {
+		return err
+	}
+	l, err := c.updateLightClientIfNeededTo(ctx, &height)
+	if err != nil {
+		return err
+	}
+	return proof.Validate(l.DataHash)
+}
+
+// shareProofCoversRange checks that the shares a proof claims, in original
+// data square coordinates, are exactly [start, end). Validate later
+// authenticates the row indexes and square width this relies on.
+func shareProofCoversRange(proof types.ShareProof, start, end uint64) error {
+	rp := proof.RowProof
+	if len(proof.ShareProofs) == 0 || len(rp.Proofs) == 0 || rp.Proofs[0] == nil ||
+		proof.ShareProofs[0] == nil || proof.ShareProofs[len(proof.ShareProofs)-1] == nil {
+		return errors.New("malformed share proof")
+	}
+	// The data root commits to 2k row roots and 2k column roots for a k-wide
+	// square. Bound the width so the arithmetic below cannot overflow.
+	total := rp.Proofs[0].Total
+	if total < 4 || total > 1<<32 {
+		return fmt.Errorf("invalid share proof total %d", total)
+	}
+	width := uint64(total) / 4
+	first, last := proof.ShareProofs[0], proof.ShareProofs[len(proof.ShareProofs)-1]
+	if first.Start < 0 || last.End < 0 {
+		return errors.New("malformed share proof")
+	}
+	gotStart := uint64(rp.StartRow)*width + uint64(first.Start)
+	gotEnd := uint64(rp.EndRow)*width + uint64(last.End)
+	if gotStart != start || gotEnd != end {
+		return fmt.Errorf("share proof covers [%d, %d), which does not match requested range [%d, %d)", gotStart, gotEnd, start, end)
+	}
+	return nil
 }
 
 func (c *Client) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
