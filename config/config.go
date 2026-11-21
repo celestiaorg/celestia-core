@@ -1457,9 +1457,9 @@ type StorageConfig struct {
 	BlockstoreGoLevelDBDisableLargeBatchTransaction bool `mapstructure:"blockstore_goleveldb_disable_large_batch_transaction"`
 }
 
-// maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; up to two
-// memtables can be resident at once.
-const maxBlockstoreMemtableSizeMB = 1024
+// maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; about three
+// memtables can be resident at once, and 256 MiB covers twice the largest block.
+const maxBlockstoreMemtableSizeMB = 256
 
 // DefaultStorageConfig returns the default configuration options relating to
 // CometBFT storage optimization.

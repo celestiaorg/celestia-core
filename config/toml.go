@@ -617,13 +617,14 @@ compact = {{ .Storage.Compact }}
 # large multiple of your retain height as it might occur bigger overheads.
 compaction_interval = {{ .Storage.CompactionInterval }}
 
-# Memtable size of the blockstore database in MiB (goleveldb WriteBuffer, pebble MemTableSize).
-# It should hold a whole block: with a smaller memtable, saving a large block stalls on
-# level-0 compaction. 0 uses the engine default (4 MiB).
+# Memtable size of the blockstore database in MiB (goleveldb WriteBuffer, pebble MemTableSize),
+# for goleveldb and pebbledb only. Up to about three memtables are held in memory at once.
+# Smaller memtables make saving large blocks stall on level-0 compaction. 0 = engine default (4 MiB).
 blockstore_memtable_size_mb = {{ .Storage.BlockstoreMemtableSizeMB }}
 
 # goleveldb only: write blockstore batches larger than the memtable through the journal
-# instead of straight to level-0 tables, which waits on compaction.
+# instead of straight to level-0 tables, which waits on compaction. Set this to false and
+# the size above to 0 to restore the engine defaults.
 blockstore_goleveldb_disable_large_batch_transaction = {{ .Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction }}
 
 #######################################################
