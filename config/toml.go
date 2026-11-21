@@ -381,6 +381,10 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 # you can disable rechecking.
 recheck = {{ .Mempool.Recheck }}
 
+# disable_recheck_batch (default: false) stops sending the whole recheck to an in-process
+# app in one call; other apps are rechecked one tx at a time either way.
+disable_recheck_batch = {{ .Mempool.DisableRecheckBatch }}
+
 # recheck_timeout is the time the application has during the rechecking process
 # to return CheckTx responses, once all requests have been sent. Responses that
 # arrive after the timeout expires are discarded. It only applies to

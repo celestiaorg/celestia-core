@@ -92,6 +92,18 @@ func (app *localClient) Info(ctx context.Context, req *types.RequestInfo) (*type
 	return app.Application.Info(ctx, req)
 }
 
+// RecheckTxs forwards a batch recheck to an application that implements
+// types.RecheckTxsApplication, holding the client mutex for the whole batch.
+func (app *localClient) RecheckTxs(ctx context.Context, req *types.RequestRecheckTxs) (*types.ResponseRecheckTxs, error) {
+	b, ok := app.Application.(types.RecheckTxsApplication)
+	if !ok {
+		return nil, types.ErrRecheckTxsUnsupported
+	}
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+	return b.RecheckTxs(ctx, req)
+}
+
 func (app *localClient) CheckTx(ctx context.Context, req *types.RequestCheckTx) (*types.ResponseCheckTx, error) {
 	app.mtx.Lock()
 	defer app.mtx.Unlock()

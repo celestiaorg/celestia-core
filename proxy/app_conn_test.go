@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	abcimocks "github.com/cometbft/cometbft/abci/client/mocks"
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/abci/server"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -96,4 +99,34 @@ func BenchmarkEcho(b *testing.B) {
 	}
 
 	b.StopTimer()
+}
+
+type recheckTxsApp struct {
+	*kvstore.Application
+}
+
+func (recheckTxsApp) RecheckTxs(_ context.Context, req *abci.RequestRecheckTxs) (*abci.ResponseRecheckTxs, error) {
+	return &abci.ResponseRecheckTxs{Responses: make([]*abci.ResponseCheckTx, len(req.Txs))}, nil
+}
+
+func TestAppConnMempoolRecheckTxs(t *testing.T) {
+	ctx := context.Background()
+	req := &abci.RequestRecheckTxs{Txs: [][]byte{[]byte("a")}}
+
+	app := recheckTxsApp{kvstore.NewInMemoryApplication()}
+	for name, cc := range map[string]ClientCreator{
+		"local":     NewLocalClientCreator(app),
+		"conn-sync": NewConnSyncLocalClientCreator(app),
+	} {
+		cli, err := cc.NewABCIClient()
+		require.NoError(t, err)
+		rsp, err := NewAppConnMempool(cli, NopMetrics()).(abci.RecheckTxsApplication).RecheckTxs(ctx, req)
+		require.NoError(t, err, name)
+		require.Len(t, rsp.Responses, 1, name)
+	}
+
+	// Remote clients cannot carry the Go-level request.
+	remote := NewAppConnMempool(&abcimocks.Client{}, NopMetrics())
+	_, err := remote.(abci.RecheckTxsApplication).RecheckTxs(ctx, req)
+	require.ErrorIs(t, err, abci.ErrRecheckTxsUnsupported)
 }
