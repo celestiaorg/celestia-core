@@ -291,11 +291,14 @@ func extractLabels(bl *ast.BasicLit) string {
 	if bl != nil {
 		t := reflect.StructTag(strings.Trim(bl.Value, "`"))
 		if v := t.Get(labelsTag); v != "" {
-			var res []string //nolint:prealloc
-			for _, s := range strings.Split(v, ",") {
-				res = append(res, strconv.Quote(strings.TrimSpace(s)))
+			var res strings.Builder
+			for s := range strings.SplitSeq(v, ",") {
+				if res.Len() > 0 {
+					res.WriteByte(',')
+				}
+				res.WriteString(strconv.Quote(strings.TrimSpace(s)))
 			}
-			return strings.Join(res, ",")
+			return res.String()
 		}
 	}
 	return ""
