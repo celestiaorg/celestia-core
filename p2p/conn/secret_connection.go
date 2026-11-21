@@ -237,8 +237,11 @@ func (sc *SecretConnection) Write(data []byte) (n int, err error) {
 			return n, err
 		}
 	}
-	err = sc.connWriter.Flush()
-	return n, err
+	// Nothing counts as written until the buffered frames reach the conn.
+	if err := sc.connWriter.Flush(); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // CONTRACT: data smaller than dataMaxSize is read atomically.
