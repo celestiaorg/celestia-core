@@ -682,6 +682,12 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.rs.Height = height
+	cs.notifyDataSync()
+}
+
+// notifyDataSync wakes syncData to pass on any parts the propagator holds for
+// the current proposal. It never blocks.
+func (cs *State) notifyDataSync() {
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
 	default:
@@ -700,10 +706,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.rs.Round = round
 	cs.rs.Step = step
-	select {
-	case cs.newHeightOrRoundChan <- struct{}{}:
-	default:
-	}
+	cs.notifyDataSync()
 }
 
 // enterNewRound(height, 0) at cs.StartTime.
@@ -2594,6 +2597,9 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
+		// Parts the propagator passed on before this proposal was dropped, and it
+		// will not send them again. Have syncData pass on the parts it holds.
+		cs.notifyDataSync()
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
