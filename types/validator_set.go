@@ -795,6 +795,17 @@ func (vals *ValidatorSet) verifyCommitLightInternal(
 
 	talliedVotingPower := int64(0)
 	votingPowerNeeded := vals.TotalVotingPower() * 2 / 3
+	var preVerified []bool
+	if parallelSigVerify {
+		preVerified = parallelVerify(len(commit.Signatures), func(idx int) bool {
+			cs := commit.Signatures[idx]
+			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
+				return false
+			}
+			//nolint:gosec
+			return vals.Validators[idx].PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
+		})
+	}
 	for idx, commitSig := range commit.Signatures {
 		// No need to verify absent or nil votes if not counting all signatures,
 		// but need to verify nil votes if counting all signatures.
@@ -806,10 +817,16 @@ func (vals *ValidatorSet) verifyCommitLightInternal(
 		// This means we don't need the validator address or to do any lookup.
 		val := vals.Validators[idx]
 
-		// Validate signature.
-		//nolint:gosec
-		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
+		// Validate signature (precomputed in parallel when enabled; identical result).
+		var sigOK bool
+		if preVerified != nil {
+			sigOK = preVerified[idx]
+		} else {
+			//nolint:gosec
+			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
+			sigOK = val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature)
+		}
+		if !sigOK {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 		}
 
@@ -883,6 +900,22 @@ func (vals *ValidatorSet) verifyCommitLightTrustingInternal(
 	//nolint:gosec
 	votingPowerNeeded := totalVotingPowerMulByNumerator / int64(trustLevel.Denominator)
 
+	var preVerified []bool
+	if parallelSigVerify {
+		preVerified = parallelVerify(len(commit.Signatures), func(idx int) bool {
+			cs := commit.Signatures[idx]
+			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
+				return false
+			}
+			_, v := vals.GetByAddress(cs.ValidatorAddress)
+			if v == nil {
+				return false
+			}
+			//nolint:gosec
+			return v.PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
+		})
+	}
+
 	for idx, commitSig := range commit.Signatures {
 		// No need to verify absent or nil votes if not counting all signatures,
 		// but need to verify nil votes if counting all signatures.
@@ -902,10 +935,16 @@ func (vals *ValidatorSet) verifyCommitLightTrustingInternal(
 			}
 			seenVals[valIdx] = idx
 
-			// Validate signature.
-			//nolint:gosec
-			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-			if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
+			// Validate signature (precomputed in parallel when enabled; identical result).
+			var sigOK bool
+			if preVerified != nil {
+				sigOK = preVerified[idx]
+			} else {
+				//nolint:gosec
+				voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
+				sigOK = val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature)
+			}
+			if !sigOK {
 				return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 			}
 

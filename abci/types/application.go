@@ -135,6 +135,22 @@ func (app *GRPCApplication) SetOption(ctx context.Context, req *RequestSetOption
 }
 
 func (app *GRPCApplication) DeliverTx(ctx context.Context, req *RequestDeliverTx) (*ResponseDeliverTx, error) {
+	if txs, ok := DecodeDeliverTxBatch(req.Tx); ok {
+		// Sync-speedup prototype: execute a batch of txs in order in a single
+		// round trip. Semantics are identical to calling DeliverTx per tx.
+		if p, ok := app.app.(interface{ PrepareDeliverTxBatch([][]byte) }); ok {
+			p.PrepareDeliverTxBatch(txs)
+		}
+		resps := make([]ResponseDeliverTx, len(txs))
+		for i, tx := range txs {
+			resps[i] = app.app.DeliverTx(RequestDeliverTx{Tx: tx})
+		}
+		data, err := EncodeDeliverTxBatchResponse(resps)
+		if err != nil {
+			return nil, err
+		}
+		return &ResponseDeliverTx{Data: data, Info: DeliverTxBatchMagic}, nil
+	}
 	res := app.app.DeliverTx(*req)
 	return &res, nil
 }
