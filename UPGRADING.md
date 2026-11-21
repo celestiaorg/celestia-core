@@ -17,6 +17,19 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
   option to `0` to use the built-in default, or to a negative value to disable
   the limit (not recommended).
 
+* `abci_query` no longer forwards the `custom/txInclusionProof` and
+  `custom/shareInclusionProof` paths to the application and returns an error
+  instead. Use the `tx` (with `prove=true`), `tx_search` or `prove_shares_v2`
+  routes to get inclusion proofs.
+
+### Go API
+
+* `types.ShareProof.Validate` and `types.RowProof.Validate` are stricter. They
+  require one square width across the row proofs, original data square rows
+  only, share ranges that are contiguous across rows and within the row width,
+  and a 28-byte namespace ID. Proofs built by celestia-app or this repository
+  still pass. Code that builds proofs by hand may need to change.
+
 ### Consensus WAL
 
 * The consensus WAL now records the node's lock (`LockInfo`) so it survives a
