@@ -134,25 +134,35 @@ func (app *GRPCApplication) SetOption(ctx context.Context, req *RequestSetOption
 	return &res, nil
 }
 
+// DeliverTx treats a DeliverTxBatchMagic-prefixed payload as a batch only when
+// CELESTIA_MUX_BATCH=1 (sync-only nodes driven by the batching multiplexer;
+// never set on validators). Otherwise the payload is passed through unchanged.
 func (app *GRPCApplication) DeliverTx(ctx context.Context, req *RequestDeliverTx) (*ResponseDeliverTx, error) {
-	if txs, ok := DecodeDeliverTxBatch(req.Tx); ok {
-		// Sync-speedup prototype: execute a batch of txs in order in a single
-		// round trip. Semantics are identical to calling DeliverTx per tx.
-		if p, ok := app.app.(interface{ PrepareDeliverTxBatch([][]byte) }); ok {
-			p.PrepareDeliverTxBatch(txs)
+	if muxBatchEnabled {
+		if txs, ok := DecodeDeliverTxBatch(req.Tx); ok {
+			return app.deliverTxBatch(txs)
 		}
-		resps := make([]ResponseDeliverTx, len(txs))
-		for i, tx := range txs {
-			resps[i] = app.app.DeliverTx(RequestDeliverTx{Tx: tx})
-		}
-		data, err := EncodeDeliverTxBatchResponse(resps)
-		if err != nil {
-			return nil, err
-		}
-		return &ResponseDeliverTx{Data: data, Info: DeliverTxBatchMagic}, nil
 	}
 	res := app.app.DeliverTx(*req)
 	return &res, nil
+}
+
+// deliverTxBatch executes a batch of txs in order in a single round trip
+// (sync-speedup prototype). Semantics are identical to calling DeliverTx per
+// tx. Only reachable when CELESTIA_MUX_BATCH=1, see muxBatchEnabled.
+func (app *GRPCApplication) deliverTxBatch(txs [][]byte) (*ResponseDeliverTx, error) {
+	if p, ok := app.app.(interface{ PrepareDeliverTxBatch([][]byte) }); ok {
+		p.PrepareDeliverTxBatch(txs)
+	}
+	resps := make([]ResponseDeliverTx, len(txs))
+	for i, tx := range txs {
+		resps[i] = app.app.DeliverTx(RequestDeliverTx{Tx: tx})
+	}
+	data, err := EncodeDeliverTxBatchResponse(resps)
+	if err != nil {
+		return nil, err
+	}
+	return &ResponseDeliverTx{Data: data, Info: DeliverTxBatchMagic}, nil
 }
 
 func (app *GRPCApplication) CheckTx(ctx context.Context, req *RequestCheckTx) (*ResponseCheckTx, error) {

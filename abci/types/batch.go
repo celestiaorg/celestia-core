@@ -4,7 +4,21 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 )
+
+// muxBatchEnabled gates server-side recognition of DeliverTx batch payloads in
+// GRPCApplication.DeliverTx (sync-speedup prototype). It is read once at
+// process start from CELESTIA_MUX_BATCH=1; the embedded child process inherits
+// the multiplexer's environment.
+//
+// WARNING: set this only on sync-only nodes driven by the batching
+// multiplexer, never on validators or other consensus-participating nodes.
+// With the flag on, a raw tx that happens to start with DeliverTxBatchMagic
+// would be executed as its inner txs instead of as a single tx, which would
+// diverge from nodes that run without the flag. When the flag is off (the
+// default), every payload is passed to Application.DeliverTx unchanged.
+var muxBatchEnabled = os.Getenv("CELESTIA_MUX_BATCH") == "1"
 
 // DeliverTxBatchMagic prefixes a RequestDeliverTx.Tx that carries a batch of
 // length-prefixed txs (sync-speedup prototype). Real txs are protobuf-encoded
