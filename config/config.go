@@ -754,10 +754,10 @@ type P2PConfig struct {
 	// Time to wait before flushing messages out on the connection
 	FlushThrottleTimeout time.Duration `mapstructure:"flush_throttle_timeout"`
 
-	// Flush latency-critical messages (votes, round steps, compact blocks,
-	// haves, wants, recovery parts) as soon as none are left queued, instead of
-	// waiting for the flush throttle. Other traffic stays batched.
-	FlushLowLatency bool `mapstructure:"flush_low_latency"`
+	// How long latency-critical messages (votes, round steps, compact blocks,
+	// haves, wants, recovery parts) wait once none are left queued, so bursts
+	// share frames. 0 waits for the flush throttle like other traffic.
+	FlushLowLatency time.Duration `mapstructure:"flush_low_latency"`
 
 	// Maximum size of a message packet payload, in bytes
 	MaxPacketMsgPayloadSize int `mapstructure:"max_packet_msg_payload_size"`
@@ -807,7 +807,7 @@ func DefaultP2PConfig() *P2PConfig {
 		MaxNumOutboundPeers:          10,
 		PersistentPeersMaxDialPeriod: 0 * time.Second,
 		FlushThrottleTimeout:         100 * time.Millisecond,
-		FlushLowLatency:              true,
+		FlushLowLatency:              2 * time.Millisecond,
 		MaxPacketMsgPayloadSize:      1024,    // 1 kB
 		SendRate:                     5120000, // 5 mB/s
 		RecvRate:                     5120000, // 5 mB/s
@@ -847,6 +847,9 @@ func (cfg *P2PConfig) ValidateBasic() error {
 	}
 	if cfg.FlushThrottleTimeout < 0 {
 		return errors.New("flush_throttle_timeout can't be negative")
+	}
+	if cfg.FlushLowLatency < 0 {
+		return errors.New("flush_low_latency can't be negative")
 	}
 	if cfg.PersistentPeersMaxDialPeriod < 0 {
 		return errors.New("persistent_peers_max_dial_period can't be negative")

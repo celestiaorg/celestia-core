@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -158,5 +159,18 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 		pattern := fmt.Sprintf("type = \"%s\"", mempoolType)
 		assert.NotContains(t, configContent, pattern,
 			"Config should not contain mempool type field")
+	}
+}
+
+// Configs from v0.43.0-rc builds hold a bool; viper decodes it weakly, and
+// celestia-app remaps the legacy true (1ns) to the default.
+func TestFlushLowLatencyLegacyBool(t *testing.T) {
+	for raw, want := range map[string]time.Duration{"true": time.Nanosecond, "false": 0, `"5ms"`: 5 * time.Millisecond} {
+		v := viper.New()
+		v.SetConfigType("toml")
+		require.NoError(t, v.ReadConfig(strings.NewReader("[p2p]\nflush_low_latency = "+raw+"\n")))
+		cfg := config.DefaultConfig()
+		require.NoError(t, v.Unmarshal(cfg))
+		require.Equal(t, want, cfg.P2P.FlushLowLatency, raw)
 	}
 }
