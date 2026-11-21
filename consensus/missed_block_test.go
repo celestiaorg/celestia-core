@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -241,4 +242,162 @@ func TestCommitForEarlierRoundTakesHeldBlock(t *testing.T) {
 	cs1, vss := randState(4)
 	_, newBlockCh := commitEarlierRound(t, cs1, vss[1:])
 	ensureNewBlock(newBlockCh, 1)
+}
+
+// proposalFeeder hands consensus the proposal and parts a test sends, and holds that
+// proposal's parts like the propagator does once it has them.
+type proposalFeeder struct {
+	propagation.Propagator
+	proposals chan propagation.ProposalAndSrc
+	parts     chan types.PartInfo
+	proposal  *types.Proposal
+	partSet   *types.PartSet
+}
+
+func (p *proposalFeeder) GetProposalChan() <-chan propagation.ProposalAndSrc { return p.proposals }
+
+func (p *proposalFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
+
+func (p *proposalFeeder) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	if p.proposal == nil || p.proposal.Height != height || p.proposal.Round != round {
+		return nil, nil, false
+	}
+	return p.proposal, p.partSet, true
+}
+
+// partRecordingWAL counts the block parts consensus writes to its WAL.
+type partRecordingWAL struct {
+	nilWAL
+	mtx   sync.Mutex
+	parts int
+}
+
+func (w *partRecordingWAL) Write(m WALMessage) error {
+	if mi, ok := m.(msgInfo); ok {
+		if _, ok := mi.Msg.(*BlockPartMessage); ok {
+			w.mtx.Lock()
+			w.parts++
+			w.mtx.Unlock()
+		}
+	}
+	return nil
+}
+
+func (w *partRecordingWAL) WriteSync(m WALMessage) error { return w.Write(m) }
+
+func (w *partRecordingWAL) partWrites() int {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	return w.parts
+}
+
+// earlyPartsSetup holds a node waiting in round 1's propose step, round 1's proposal and
+// its block, and the feeder that stands in for the node's propagator.
+type earlyPartsSetup struct {
+	cs1      *State
+	others   []*validatorStub
+	feeder   *proposalFeeder
+	wal      *partRecordingWAL
+	proposal *types.Proposal
+	block    *types.Block
+	parts    *types.PartSet
+}
+
+// startEarlyParts moves cs1 to round 1, where another validator proposes, and hands
+// consensus that proposal's parts before anything else about the proposal.
+func startEarlyParts(t *testing.T) earlyPartsSetup {
+	cs1, vss := randState(4)
+	others := vss[1:]
+	height := cs1.rs.Height
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+	cs1.config.OnlyInternalWal = true
+	wal := &partRecordingWAL{}
+	cs1.wal = wal
+	cs1.doWALCatchup = false
+
+	// round 1's proposer signs a block built by cs1.
+	proposerAddr := cs1.rs.Validators.CopyIncrementProposerPriority(1).GetProposer().Address
+	var proposer *validatorStub
+	for _, vs := range others {
+		pubKey, err := vs.GetPubKey()
+		require.NoError(t, err)
+		if bytes.Equal(pubKey.Address(), proposerAddr) {
+			proposer = vs
+		}
+	}
+	require.NotNil(t, proposer)
+	proposal, block := decideProposal(context.Background(), t, cs1, proposer, height, 1)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	feeder := &proposalFeeder{
+		Propagator: cs1.propagator,
+		proposals:  make(chan propagation.ProposalAndSrc, 1),
+		parts:      make(chan types.PartInfo, parts.Total()+1),
+		proposal:   proposal,
+		partSet:    parts,
+	}
+	cs1.propagator = feeder
+
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	require.NoError(t, cs1.Start())
+	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
+	ensureNewRound(newRoundCh, height, 0)
+
+	// nil precommits at round 0 move cs1 to round 1 and leave the others' round-1
+	// votes free.
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, others...)
+	ensureNewRound(newRoundCh, height, 1)
+	incrementRound(others...)
+
+	// wait out the round-step wakes: one still pending could hand over the parts
+	// later, without the wake under test. syncData finishes a wake it took before
+	// it reads anything else.
+	require.Eventually(t, func() bool {
+		rs := cs1.GetRoundState()
+		return rs.Round == 1 && rs.Step == cstypes.RoundStepPropose && len(cs1.newHeightOrRoundChan) == 0
+	}, time.Second, time.Millisecond)
+	walParts := wal.partWrites()
+
+	// the parts go first: syncData forwards them while cs1 has no part set. A part
+	// for another round follows; syncData skips it, and takes it only once it has
+	// queued the real parts.
+	for i := 0; i < int(parts.Total()); i++ {
+		feeder.parts <- types.PartInfo{Part: parts.GetPart(i), Height: height, Round: 1}
+	}
+	feeder.parts <- types.PartInfo{Part: parts.GetPart(0), Height: height, Round: 99}
+	require.Eventually(t, func() bool { return len(feeder.parts) == 0 }, time.Second, time.Millisecond)
+	require.Equal(t, walParts, wal.partWrites(), "parts from the propagator must not be written to the WAL")
+
+	return earlyPartsSetup{cs1: cs1, others: others, feeder: feeder, wal: wal, proposal: proposal, block: block, parts: parts}
+}
+
+// requireBlockCompletes waits for cs1 to hold round 1's block, well before the propose
+// timeout, and checks that no part handed over again was written to the WAL.
+func requireBlockCompletes(t *testing.T, s earlyPartsSetup, walParts int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		rs := s.cs1.GetRoundState()
+		return rs.Round == 1 && rs.ProposalBlock != nil && bytes.Equal(rs.ProposalBlock.Hash(), s.block.Hash())
+	}, 5*time.Second, 10*time.Millisecond, "the block never completed")
+	require.Equal(t, walParts, s.wal.partWrites(), "parts from the propagator must not be written to the WAL")
+}
+
+// A part that reaches consensus before its proposal is dropped. Once the proposal
+// arrives, consensus must still take the parts the propagator holds and complete the
+// block before the propose timeout.
+func TestProposalAfterItsPartsCompletesBlock(t *testing.T) {
+	s := startEarlyParts(t)
+	walParts := s.wal.partWrites()
+	s.feeder.proposals <- propagation.ProposalAndSrc{Proposal: *s.proposal, From: "peer"}
+	requireBlockCompletes(t, s, walParts)
+}
+
+// A part dropped before a polka creates the part set must also reach consensus then,
+// not only at the propose timeout.
+func TestPolkaAfterItsPartsCompletesBlock(t *testing.T) {
+	s := startEarlyParts(t)
+	walParts := s.wal.partWrites()
+	signAddVotes(s.cs1, cmtproto.PrevoteType, s.block.Hash(), s.parts.Header(), false, s.others...)
+	requireBlockCompletes(t, s, walParts)
 }
