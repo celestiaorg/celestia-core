@@ -235,14 +235,14 @@ func TestHandleWantsTracksOnlyCachedRounds(t *testing.T) {
 }
 
 // TestHandleWantsServesWhenPeerStateFull checks that a want for a cached
-// proposal is still served when the peer's state is at its round cap and
+// proposal is still served when the peer's state is at its height cap and
 // cannot track a request counter for it.
 func TestHandleWantsServesWhenPeerStateFull(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	rp := addRecordingPeer(t, r, 1_000_000)
 
 	r.pmtx.Lock()
-	height := r.height
+	height := r.height + MaxPeerStateHeights
 	round := int32(0)
 	r.proposals[height] = map[int32]*proposalData{
 		round: {block: proptypes.NewCombinedPartSetFromOriginal(ps, false)},
@@ -251,9 +251,10 @@ func TestHandleWantsServesWhenPeerStateFull(t *testing.T) {
 
 	p := r.getPeer(rp.ID())
 	require.NotNil(t, p)
-	// fill the height with rounds above the wanted one, so the cap refuses it
-	for rd := int32(1); rd <= MaxPeerStateRoundsPerHeight; rd++ {
-		require.True(t, p.SetRemainingRequests(height, rd, 1))
+	// fill the peer state with heights below the wanted one, so the cap
+	// refuses it
+	for h := r.height; h < height; h++ {
+		require.True(t, p.SetRemainingRequests(h, round, 1))
 	}
 
 	parts := bits.NewBitArray(int(ps.Total()) * 2)

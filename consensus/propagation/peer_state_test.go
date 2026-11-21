@@ -448,7 +448,8 @@ func TestPeerState_pruneRemainingRequestsWithoutState(t *testing.T) {
 
 // TestPeerState_capsRoundsPerHeight checks that no caller can grow a peer's
 // part state or request counters past MaxPeerStateRoundsPerHeight rounds at
-// one height, and that the highest rounds are kept.
+// one height. A full height evicts its lowest round, so the highest round is
+// always kept and any other round can still be tracked.
 func TestPeerState_capsRoundsPerHeight(t *testing.T) {
 	ps := newTestPeerState()
 	const height = int64(3)
@@ -471,16 +472,26 @@ func TestPeerState_capsRoundsPerHeight(t *testing.T) {
 	require.True(t, has)
 	_, has = ps.GetWants(height, lowest-1)
 	require.False(t, has, "round below the cap must be evicted")
-	require.False(t, ps.SetRemainingRequests(height, 1, 1), "round below all tracked ones must be refused")
+
+	// A round below all tracked ones, such as an older commit round, evicts
+	// the lowest tracked round.
+	ps.AddWants(height, 1, bits.NewBitArray(4))
+	require.True(t, ps.SetRemainingRequests(height, 1, 1))
+	_, has = ps.GetWants(height, 1)
+	require.True(t, has, "round below all tracked ones must be admitted")
+	_, has = ps.GetWants(height, lowest)
+	require.False(t, has)
+	_, has = ps.GetWants(height, 1000)
+	require.True(t, has, "highest round must be kept")
 
 	// A round above all tracked ones evicts the lowest.
 	ps.AddWants(height, 1001, bits.NewBitArray(4))
 	require.True(t, ps.SetRemainingRequests(height, 1001, 1))
 	_, has = ps.GetWants(height, 1001)
 	require.True(t, has)
-	_, has = ps.GetWants(height, lowest)
-	require.False(t, has)
-	require.Zero(t, ps.GetRemainingRequests(height, lowest))
+	_, has = ps.GetWants(height, 1)
+	require.False(t, has, "lowest round must be evicted")
+	require.Zero(t, ps.GetRemainingRequests(height, 1))
 	ps.mtx.RLock()
 	require.Len(t, ps.state[height], MaxPeerStateRoundsPerHeight)
 	require.Len(t, ps.remainingRequests[height], MaxPeerStateRoundsPerHeight)
@@ -512,9 +523,27 @@ func TestPeerState_requestsPartsPastRoundCap(t *testing.T) {
 	require.True(t, ps.ConsumePushAllowance(height, round+1, 0))
 }
 
+// TestPeerState_requestsOlderCommitRoundPastCap checks that a node can
+// request parts for an older round that delayed precommits commit, after newer
+// rounds filled the height, and that the newest round stays tracked.
+func TestPeerState_requestsOlderCommitRoundPastCap(t *testing.T) {
+	peer := &mocks.Peer{}
+	peer.On("TrySend", tmock.Anything).Return(true)
+	ps := newPeerState(context.Background(), peer, log.NewNopLogger())
+	const height = int64(3)
+	for r := int32(1); r <= MaxPeerStateRoundsPerHeight; r++ {
+		ps.Initialize(height, r, 4)
+	}
+
+	require.True(t, ps.RequestParts(height, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
+	require.True(t, ps.Requested(height, 0, 1))
+	_, has := ps.GetHaves(height, MaxPeerStateRoundsPerHeight)
+	require.True(t, has, "newest round must stay tracked")
+}
+
 // TestPeerState_refusedStateIsNotUsed checks that RequestParts and
-// GrantPushAllowance do nothing, rather than panic, when the caps refuse the
-// height and round.
+// GrantPushAllowance do nothing, rather than panic, when the height cap
+// refuses the height.
 func TestPeerState_refusedStateIsNotUsed(t *testing.T) {
 	peer := &mocks.Peer{}
 	ps := newPeerState(context.Background(), peer, log.NewNopLogger())
