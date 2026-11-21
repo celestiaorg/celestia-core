@@ -37,6 +37,12 @@ func TestPartBeforeProposalIsRefetched(t *testing.T) {
 
 	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 	startTestRound(cs1, height, round)
+	// Drop the round-step signal startTestRound left pending, so only setting the
+	// proposal can make syncData pass on the held parts.
+	select {
+	case <-cs1.newHeightOrRoundChan:
+	default:
+	}
 	// startTestRound does not start syncData, which passes on the propagator's parts.
 	go cs1.syncData()
 
