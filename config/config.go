@@ -1465,11 +1465,10 @@ const maxBlockstoreMemtableSizeMB = 1024
 // CometBFT storage optimization.
 func DefaultStorageConfig() *StorageConfig {
 	return &StorageConfig{
-		DiscardABCIResponses: false,
-		Compact:              false,
-		CompactionInterval:   10000,
-		// Holds a whole block so SaveBlock's batch never waits on level-0 compaction.
-		BlockstoreMemtableSizeMB:                        64,
+		DiscardABCIResponses:     false,
+		Compact:                  false,
+		CompactionInterval:       10000,
+		BlockstoreMemtableSizeMB: 64,
 		BlockstoreGoLevelDBDisableLargeBatchTransaction: true,
 	}
 }
