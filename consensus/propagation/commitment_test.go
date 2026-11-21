@@ -312,6 +312,12 @@ func TestRecoverPartsFromLiveMempool(t *testing.T) {
 			}
 		}
 	})
+	// stop the writer before the reactor and app stop, even if an assertion
+	// below fails
+	t.Cleanup(func() {
+		close(done)
+		wg.Wait()
+	})
 
 	for range 5 {
 		data.block = proptypes.NewCombinedSetFromCompactBlock(cb)
@@ -325,8 +331,6 @@ func TestRecoverPartsFromLiveMempool(t *testing.T) {
 			<-reactor.partChan
 		}
 	}
-	close(done)
-	wg.Wait()
 }
 
 var _ Mempool = &mockMempool{}
