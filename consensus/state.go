@@ -3112,6 +3112,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
+					// parts that reached us before the polka were dropped; take them now.
+					cs.wakeSyncData()
 				}
 
 				// Announce unconditionally, as before this change: the reactor
@@ -3517,7 +3519,8 @@ func (cs *State) syncData() {
 					continue
 				}
 				part := partset.GetPart(indice)
-				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				// like partChan's parts: peer data, kept out of the WAL under only_internal_wal.
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		case part, ok := <-partChan:
 			if !ok {
