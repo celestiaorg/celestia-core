@@ -346,6 +346,10 @@ func (c *MConnection) String() string {
 func (c *MConnection) flush() {
 	//c.Logger.Debug("Flush", "conn", c)
 	c.lowLatencyPending = false
+	if c.lowLatencyTimer != nil {
+		// later writes get their own full window rather than this deadline.
+		c.lowLatencyTimer.Unset()
+	}
 	err := c.bufConnWriter.Flush()
 	if err != nil {
 		c.Logger.Debug("MConnection flush failed", "err", err)

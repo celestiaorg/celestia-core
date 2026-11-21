@@ -900,6 +900,16 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		require.Zero(t, conn.writes)
 	})
 
+	t.Run("other flushes cancel an armed low latency flush", func(t *testing.T) {
+		c, _ := newConn(t)
+		c.lowLatencyTimer.Stop()
+		c.lowLatencyTimer = timer.NewThrottleTimer("flushLowLatency", 50*time.Millisecond)
+		queueVotes(c, 1)
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		c.flush() // e.g. the flush timer, before the low latency deadline
+		require.False(t, armed(c))
+	})
+
 	t.Run("bulk only batch is not flushed", func(t *testing.T) {
 		c, conn := newConn(t)
 		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
