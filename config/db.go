@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 
+	"github.com/cockroachdb/pebble"
 	dbm "github.com/cometbft/cometbft-db"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
@@ -30,5 +32,31 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	if path == "" {
 		path = ctx.Config.DBDir()
 	}
+	if ctx.ID == "blockstore" && ctx.Config.Storage != nil {
+		return newBlockstoreDB(dbType, path, ctx.Config.Storage)
+	}
 	return dbm.NewDB(ctx.ID, dbType, path)
+}
+
+// newBlockstoreDB opens the blockstore with the [storage] memtable options, so
+// SaveBlock's whole-block batch does not stall on level-0 compaction.
+func newBlockstoreDB(backend dbm.BackendType, dir string, cfg *StorageConfig) (dbm.DB, error) {
+	switch backend {
+	case dbm.GoLevelDBBackend:
+		return dbm.NewGoLevelDBWithOpts("blockstore", dir, blockstoreGoLevelDBOptions(cfg))
+	case dbm.PebbleDBBackend:
+		return dbm.NewPebbleDBWithOpts("blockstore", dir, blockstorePebbleOptions(cfg))
+	}
+	return dbm.NewDB("blockstore", backend, dir)
+}
+
+func blockstoreGoLevelDBOptions(cfg *StorageConfig) *opt.Options {
+	return &opt.Options{
+		WriteBuffer:                  cfg.BlockstoreMemtableSizeMB << 20,
+		DisableLargeBatchTransaction: cfg.BlockstoreGoLevelDBDisableLargeBatchTransaction,
+	}
+}
+
+func blockstorePebbleOptions(cfg *StorageConfig) *pebble.Options {
+	return &pebble.Options{MemTableSize: uint64(cfg.BlockstoreMemtableSizeMB) << 20}
 }

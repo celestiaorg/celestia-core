@@ -1449,7 +1449,17 @@ type StorageConfig struct {
 	// large multiple of your retain height as it might occur bigger overheads.
 	// 10000 by default.
 	CompactionInterval int64 `mapstructure:"compaction_interval"`
+	// BlockstoreMemtableSizeMB is the blockstore DB memtable size in MiB (goleveldb
+	// WriteBuffer, pebble MemTableSize). 0 keeps the engine default of 4 MiB.
+	BlockstoreMemtableSizeMB int `mapstructure:"blockstore_memtable_size_mb"`
+	// BlockstoreGoLevelDBDisableLargeBatchTransaction writes goleveldb batches larger
+	// than the memtable through the journal, not a transaction that waits on compaction.
+	BlockstoreGoLevelDBDisableLargeBatchTransaction bool `mapstructure:"blockstore_goleveldb_disable_large_batch_transaction"`
 }
+
+// maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; up to two
+// memtables can be resident at once.
+const maxBlockstoreMemtableSizeMB = 1024
 
 // DefaultStorageConfig returns the default configuration options relating to
 // CometBFT storage optimization.
@@ -1458,6 +1468,9 @@ func DefaultStorageConfig() *StorageConfig {
 		DiscardABCIResponses: false,
 		Compact:              false,
 		CompactionInterval:   10000,
+		// Holds a whole block so SaveBlock's batch never waits on level-0 compaction.
+		BlockstoreMemtableSizeMB:                        64,
+		BlockstoreGoLevelDBDisableLargeBatchTransaction: true,
 	}
 }
 
@@ -1472,6 +1485,10 @@ func TestStorageConfig() *StorageConfig {
 // ValidateBasic performs basic validation, returning an error if any check
 // fails.
 func (cfg *StorageConfig) ValidateBasic() error {
+	if cfg.BlockstoreMemtableSizeMB < 0 || cfg.BlockstoreMemtableSizeMB > maxBlockstoreMemtableSizeMB {
+		return fmt.Errorf("blockstore_memtable_size_mb must be between 0 and %d, got %d",
+			maxBlockstoreMemtableSizeMB, cfg.BlockstoreMemtableSizeMB)
+	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
 		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
 	}

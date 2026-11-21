@@ -18,6 +18,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
@@ -1158,4 +1159,39 @@ func TestBlockStore_CompactRange_AdvancesMarker(t *testing.T) {
 	require.Len(t, ranges, 4)
 	require.Equal(t, []byte("H:500"), ranges[0][0])
 	require.Equal(t, []byte("H:900"), ranges[0][1])
+}
+
+// A fleet-sized block saved through the tuned blockstore options must load back,
+// also after a reopen (goleveldb replays it from the journal).
+func TestSaveLoadLargeBlockTunedBlockstore(t *testing.T) {
+	for _, backend := range []dbm.BackendType{dbm.GoLevelDBBackend, dbm.PebbleDBBackend} {
+		t.Run(string(backend), func(t *testing.T) {
+			conf := test.ResetTestRoot("large_block_test")
+			defer os.RemoveAll(conf.RootDir)
+			conf.DBBackend = string(backend)
+			conf.Storage = cfg.DefaultStorageConfig()
+			ctx := &cfg.DBContext{ID: "blockstore", Config: conf}
+			db, err := cfg.DefaultDBProvider(ctx)
+			require.NoError(t, err)
+
+			state, err := sm.MakeGenesisStateFromFile(conf.GenesisFile())
+			require.NoError(t, err)
+			var txs []types.Tx
+			for i := 0; i < 25; i++ {
+				txs = append(txs, cmtrand.Bytes(1<<20))
+			}
+			block, parts, err := state.MakeBlock(1, types.MakeData(txs), new(types.Commit), nil, state.Validators.GetProposer().Address)
+			require.NoError(t, err)
+			seen := makeTestExtCommit(1, cmttime.Now()).ToCommit()
+			NewBlockStore(db).SaveBlock(block, parts, seen)
+			require.NoError(t, db.Close())
+
+			db, err = cfg.DefaultDBProvider(ctx)
+			require.NoError(t, err)
+			defer db.Close()
+			bs := NewBlockStore(db)
+			require.EqualValues(t, 1, bs.Height())
+			require.Equal(t, block.Hash(), bs.LoadBlock(1).Hash())
+		})
+	}
 }
