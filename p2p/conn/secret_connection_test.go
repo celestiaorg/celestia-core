@@ -107,6 +107,14 @@ func TestConcurrentRead(t *testing.T) {
 	}
 }
 
+func TestSecretConnectionWriteFailedFlush(t *testing.T) {
+	fooSecConn, barSecConn := makeSecretConnPair(t)
+	require.NoError(t, barSecConn.Close())
+	n, err := fooSecConn.Write([]byte("hello"))
+	require.Error(t, err)
+	require.Zero(t, n)
+}
+
 func TestSecretConnectionReadWrite(t *testing.T) {
 	fooConn, barConn := makeKVStoreConnPair()
 	fooWrites, barWrites := []string{}, []string{}
