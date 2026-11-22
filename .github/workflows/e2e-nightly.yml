@@ -65,7 +65,9 @@ jobs:
         run: ./build/generator -g 5 -d networks/nightly/ -p
 
       # Group 05 runs the regression testnets and the netem testnet. The output
-      # stays in a file under runner.temp and is sent only to Linear.
+      # stays in a file under runner.temp and is sent only to Linear. A hung
+      # testnet is stopped before the job timeout, so it is reported as a
+      # failure instead of a cancelled run.
       - name: Run p2p testnets (${{ matrix.group }})
         working-directory: test/e2e
         env:
@@ -79,7 +81,7 @@ jobs:
           fi
           target="group$GROUP"
           mkdir -p "$LOG_DIR"
-          if ./run-multiple.sh "${manifests[@]}" >"$LOG_DIR/$target.log" 2>&1; then
+          if timeout 45m ./run-multiple.sh "${manifests[@]}" >"$LOG_DIR/$target.log" 2>&1; then
             echo "PASS $target"
           else
             echo "FAIL $target (output withheld; see the Linear issue)"
