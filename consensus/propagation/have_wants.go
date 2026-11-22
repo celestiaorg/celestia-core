@@ -485,7 +485,14 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		if remaining <= 0 {
 			break
 		}
+		// Take the peer's own token first, so that one peer cannot use up
+		// the budget that all peers share.
+		if !p.storedPartsBudget.allow() {
+			blockProp.Logger.Debug("peer stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
 		if !blockProp.storedPartsBudget.allow() {
+			p.storedPartsBudget.refund()
 			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
@@ -505,6 +512,10 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			},
 		}
 		if !p.peer.TrySend(e) {
+			// Nothing was sent, so give the tokens back. Else a peer that
+			// does not read its socket drains the shared budget.
+			p.storedPartsBudget.refund()
+			blockProp.storedPartsBudget.refund()
 			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
 			break
 		}

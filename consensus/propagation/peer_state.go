@@ -73,6 +73,11 @@ type PeerState struct {
 	// These have NOT been verified via the consensus reactor's verification
 	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
 	unverifiedProposals map[int64]*proptypes.CompactBlock
+
+	// storedPartsBudget limits how many block parts this node loads from the
+	// block store per second to serve this peer's catchup wants. It keeps one
+	// peer from using up the budget that all peers share.
+	storedPartsBudget *tokenBucket
 }
 
 type partData struct {
@@ -97,6 +102,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
+		storedPartsBudget:   newTokenBucket(StoredPartsPerPeerPerSecond, StoredPartsPerPeerBurst),
 	}
 }
 

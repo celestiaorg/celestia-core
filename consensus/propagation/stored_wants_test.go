@@ -338,4 +338,72 @@ func TestTokenBucket(t *testing.T) {
 		require.True(t, b.allow())
 	}
 	require.False(t, b.allow(), "refill is capped at the burst size")
+
+	b.refund()
+	require.True(t, b.allow(), "a refunded token can be taken again")
+	for i := 0; i < 5; i++ {
+		b.refund()
+	}
+	for i := 0; i < 3; i++ {
+		require.True(t, b.allow())
+	}
+	require.False(t, b.allow(), "refunds are capped at the burst size")
+}
+
+// One peer that floods stored-height wants must not use up the budget that
+// all peers share, or honest catchup peers get no parts.
+func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	r.storedPartsBudget = newTokenBucket(0, 1000)
+	attacker := addRecordingPeer(t, r, 1_000_000)
+	honest := addRecordingPeer(t, r, 1_000_000)
+
+	for i := 0; i < 20; i++ {
+		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	}
+	require.Less(t, len(attacker.sentParts()), 1000, "one peer is capped below the shared budget")
+
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, honest.sentParts(), int(ps.Total()))
+}
+
+// A part that is loaded but not sent must not use up any budget. Else a peer
+// that does not read its socket drains the shared budget one want at a time.
+func TestFailedStoredSendRefundsBudget(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	r.storedPartsBudget = newTokenBucket(0, 10)
+	full := addRecordingPeer(t, r, 0)
+	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, 5)
+	honest := addRecordingPeer(t, r, 1_000_000)
+
+	for i := 0; i < 100; i++ {
+		r.handleWants(full.ID(), storedWant(ps.Total(), 1, 0))
+	}
+	require.Empty(t, full.sentParts())
+
+	r.handleWants(honest.ID(), storedWant(ps.Total(), 5, 0, 1, 2, 3, 4))
+	require.Len(t, honest.sentParts(), 5, "failed sends left the shared budget intact")
+
+	full.mtx.Lock()
+	full.capacity = 1_000_000
+	full.mtx.Unlock()
+	r.handleWants(full.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, full.sentParts(), 5, "failed sends left the peer's budget intact")
+}
+
+// A part the shared budget refuses must not use up the peer's own budget.
+func TestGlobalBudgetDenialRefundsPeerBudget(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	r.storedPartsBudget = newTokenBucket(0, 0)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	peerBudget := newTokenBucket(0, 3)
+	r.getPeer(rp.ID()).storedPartsBudget = peerBudget
+
+	for i := 0; i < 10; i++ {
+		r.handleWants(rp.ID(), storedWant(ps.Total(), 1, 0))
+	}
+	require.Empty(t, rp.sentParts())
+	for i := 0; i < 3; i++ {
+		require.True(t, peerBudget.allow(), "the peer's budget is intact")
+	}
 }

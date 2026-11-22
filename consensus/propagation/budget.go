@@ -46,3 +46,14 @@ func (b *tokenBucket) allow() bool {
 	b.tokens--
 	return true
 }
+
+// refund gives back one token taken by allow, up to the burst size.
+func (b *tokenBucket) refund() {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	b.tokens++
+	if b.tokens > b.burst {
+		b.tokens = b.burst
+	}
+}

@@ -46,6 +46,16 @@ const (
 	// per part this is about 128 MiB/s. The burst is one maximum-size block.
 	StoredPartsPerSecond = 2000
 
+	// StoredPartsPerPeerPerSecond is how many block parts per second this node
+	// loads from the block store to serve one peer's catchup wants. It is an
+	// eighth of StoredPartsPerSecond, so one peer cannot use up the shared
+	// budget.
+	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 8
+
+	// StoredPartsPerPeerBurst is the burst of the per-peer budget: 512 parts,
+	// or 32 MiB. It is a quarter of the shared burst.
+	StoredPartsPerPeerBurst = 512
+
 	// RequestTimeout is how long a catchup request to a peer stays outstanding.
 	// A request expires before the second retry tick after it was sent.
 	RequestTimeout = 2*RetryTime - RetryTime/2
