@@ -170,7 +170,10 @@ func TestPeerStateExpireRequests(t *testing.T) {
 func addRecordingPeer(t *testing.T, r *Reactor, capacity int) *recordingPeer {
 	t.Helper()
 	rp := newRecordingPeer(capacity)
-	r.setPeer(rp.ID(), newPeerState(context.Background(), rp, log.NewNopLogger()))
+	ps := newPeerState(context.Background(), rp, log.NewNopLogger())
+	// Start full, as for a peer that has been connected for a while.
+	ps.storedPartsBudget = newTokenBucket(StoredPartsPerPeerPerSecond, StoredPartsPerPeerBurst)
+	r.setPeer(rp.ID(), ps)
 	return rp
 }
 
@@ -407,4 +410,30 @@ func TestGlobalBudgetDenialRefundsPeerBudget(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		require.True(t, peerBudget.allow(), "the peer's budget is intact")
 	}
+}
+
+// A peer's budget starts empty, so a peer that reconnects, or connects with a
+// new node ID, gets no burst and cannot use up the shared budget that way.
+func TestNewPeerStartsWithEmptyStoredPartsBudget(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	r.storedPartsBudget = newTokenBucket(0, 1000)
+
+	for i := 0; i < 10; i++ {
+		rp := newRecordingPeer(1_000_000)
+		r.setPeer(rp.ID(), newPeerState(context.Background(), rp, log.NewNopLogger()))
+		r.handleWants(rp.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+		require.Less(t, len(rp.sentParts()), int(ps.Total()), "a new peer gets no burst")
+	}
+}
+
+func TestEmptyTokenBucket(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newEmptyTokenBucket(10, 3)
+	b.now = func() time.Time { return now }
+	b.last = now
+
+	require.False(t, b.allow(), "starts with no tokens")
+	now = now.Add(100 * time.Millisecond)
+	require.True(t, b.allow(), "refills at the rate")
+	require.False(t, b.allow())
 }

@@ -76,7 +76,8 @@ type PeerState struct {
 
 	// storedPartsBudget limits how many block parts this node loads from the
 	// block store per second to serve this peer's catchup wants. It keeps one
-	// peer from using up the budget that all peers share.
+	// peer from using up the budget that all peers share. It starts empty, so
+	// reconnecting, or connecting with a new node ID, gives no burst.
 	storedPartsBudget *tokenBucket
 }
 
@@ -102,7 +103,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
-		storedPartsBudget:   newTokenBucket(StoredPartsPerPeerPerSecond, StoredPartsPerPeerBurst),
+		storedPartsBudget:   newEmptyTokenBucket(StoredPartsPerPeerPerSecond, StoredPartsPerPeerBurst),
 	}
 }
 

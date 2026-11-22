@@ -26,6 +26,14 @@ func newTokenBucket(rate, burst float64) *tokenBucket {
 	}
 }
 
+// newEmptyTokenBucket returns a token bucket that starts with no tokens and
+// fills up at rate tokens per second.
+func newEmptyTokenBucket(rate, burst float64) *tokenBucket {
+	b := newTokenBucket(rate, burst)
+	b.tokens = 0
+	return b
+}
+
 // allow takes one token and reports whether one was available.
 func (b *tokenBucket) allow() bool {
 	b.mtx.Lock()
