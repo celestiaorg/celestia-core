@@ -55,6 +55,8 @@ var (
 		"pause":      0.1,
 		"kill":       0.1,
 		"restart":    0.1,
+		"latency":    0.1,
+		"partition":  0.1,
 		"upgrade":    0.3,
 	}
 	lightNodePerturbations = probSetChoice{
