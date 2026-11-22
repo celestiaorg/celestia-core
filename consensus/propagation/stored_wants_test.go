@@ -171,10 +171,18 @@ func addRecordingPeer(t *testing.T, r *Reactor, capacity int) *recordingPeer {
 	t.Helper()
 	rp := newRecordingPeer(capacity)
 	ps := newPeerState(context.Background(), rp, log.NewNopLogger())
-	// Start full, as for a peer that has been connected for a while.
-	ps.storedPartsBudget = newTokenBucket(StoredPartsPerPeerPerSecond, StoredPartsPerPeerBurst)
+	ps.storedPartsBudget.fill()
 	r.setPeer(rp.ID(), ps)
 	return rp
+}
+
+// fill fills the bucket up to its burst, as for a peer that has been
+// connected for a while.
+func (b *tokenBucket) fill() {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	b.tokens = b.burst
+	b.last = b.now()
 }
 
 func storedWant(total uint32, missing int32, indices ...int) *proptypes.WantParts {
