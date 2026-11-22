@@ -81,9 +81,22 @@ jobs:
           fi
           target="group$GROUP"
           mkdir -p "$LOG_DIR"
-          if timeout 45m ./run-multiple.sh "${manifests[@]}" >"$LOG_DIR/$target.log" 2>&1; then
+          rc=0
+          timeout 45m ./run-multiple.sh "${manifests[@]}" >"$LOG_DIR/$target.log" 2>&1 || rc=$?
+          if [ "$rc" = 0 ]; then
             echo "PASS $target"
           else
+            if [ "$rc" = 124 ]; then
+              # timeout stopped run-multiple.sh before it could dump the
+              # container logs of the hung testnet, so collect them here.
+              {
+                echo "==> Timed out after 45m. Container logs of the hung testnet:"
+                for c in $(docker ps -aq); do
+                  echo "==> $(docker inspect -f '{{.Name}}' "$c")"
+                  docker logs --tail 5000 "$c" 2>&1 || true
+                done
+              } >>"$LOG_DIR/$target.log"
+            fi
             echo "FAIL $target (output withheld; see the Linear issue)"
             echo "2 test/e2e $target" >"$LOG_DIR/failed.txt"
             exit 1
