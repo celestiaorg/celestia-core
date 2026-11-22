@@ -356,39 +356,40 @@ func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	r.storedPartsBudget = newTokenBucket(0, 1000)
 	attacker := addRecordingPeer(t, r, 1_000_000)
+	// No refill, so the test does not depend on how fast the loop runs.
+	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, StoredPartsPerPeerBurst)
 	honest := addRecordingPeer(t, r, 1_000_000)
 
 	for i := 0; i < 20; i++ {
 		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
 	}
-	require.Less(t, len(attacker.sentParts()), 1000, "one peer is capped below the shared budget")
+	require.Len(t, attacker.sentParts(), StoredPartsPerPeerBurst, "one peer is capped below the shared budget")
 
 	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
 	require.Len(t, honest.sentParts(), int(ps.Total()))
 }
 
-// A part that is loaded but not sent must not use up any budget. Else a peer
-// that does not read its socket drains the shared budget one want at a time.
-func TestFailedStoredSendRefundsBudget(t *testing.T) {
+// A peer that does not read its socket makes every send fail. Each part is
+// still loaded from the store, so it must count against the peer's budget.
+// The peer's budget then keeps it from draining the shared budget.
+func TestFullQueuePeerCannotDrainSharedBudget(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, 10)
+	r.storedPartsBudget = newTokenBucket(0, 1000)
 	full := addRecordingPeer(t, r, 0)
-	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, 5)
+	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, StoredPartsPerPeerBurst)
 	honest := addRecordingPeer(t, r, 1_000_000)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 2000; i++ {
 		r.handleWants(full.ID(), storedWant(ps.Total(), 1, 0))
 	}
 	require.Empty(t, full.sentParts())
-
-	r.handleWants(honest.ID(), storedWant(ps.Total(), 5, 0, 1, 2, 3, 4))
-	require.Len(t, honest.sentParts(), 5, "failed sends left the shared budget intact")
-
 	full.mtx.Lock()
-	full.capacity = 1_000_000
+	attempts := full.attempts
 	full.mtx.Unlock()
-	r.handleWants(full.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-	require.Len(t, full.sentParts(), 5, "failed sends left the peer's budget intact")
+	require.Equal(t, StoredPartsPerPeerBurst, attempts, "store reads are bounded by the peer's budget")
+
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, honest.sentParts(), int(ps.Total()))
 }
 
 // A part the shared budget refuses must not use up the peer's own budget.

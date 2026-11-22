@@ -512,10 +512,9 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			},
 		}
 		if !p.peer.TrySend(e) {
-			// Nothing was sent, so give the tokens back. Else a peer that
-			// does not read its socket drains the shared budget.
-			p.storedPartsBudget.refund()
-			blockProp.storedPartsBudget.refund()
+			// Keep the tokens: the part was read from the store. The peer's
+			// budget keeps a peer that does not read from draining the
+			// shared budget.
 			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
 			break
 		}
