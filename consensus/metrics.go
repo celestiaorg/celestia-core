@@ -162,8 +162,9 @@ type Metrics struct {
 	// once the previous block is applied, when DynamicTimeoutCommit is set.
 	PacingFloorWaitSeconds metrics.Histogram `metrics_buckettype:"exprange" metrics_bucketsizes:"0.001, 10, 14"`
 	// PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when
-	// the previous height ran past it, quorum when +2/3 precommits came first, and
-	// bootstrap when the node had no paced start and kept the legacy one.
+	// the previous height ran past it, quorum when +2/3 precommits came first, bootstrap
+	// when the node had no paced start and kept the legacy one, and proposal when the
+	// committed proposal's earlier timestamp replaced the node's own start as the anchor.
 	PacingBypass metrics.Counter `metrics_labels:"reason"`
 }
 

@@ -987,7 +987,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.afterTimeoutCommit(cs.rs.CommitTime, cs.state.Timeouts)
 		}
 	}
-	cs.applyDynamicTimeoutCommit(prevStartTime, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
+	cs.applyDynamicTimeoutCommit(prevStartTime, state.LastBlockID, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -1019,19 +1019,27 @@ func (cs *State) updateToState(state sm.State) {
 	cs.newStep()
 }
 
-// applyDynamicTimeoutCommit raises StartTime to the previous deadline plus dynamic,
-// measured on the local clock, and never leaves it in the past. 0 is a no-op.
-func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time.Duration) {
+// applyDynamicTimeoutCommit raises StartTime to dynamic after the earlier of the previous start
+// and the committed proposal's timestamp, so a lagging node returns to the proposer's grid.
+// It never leaves StartTime in the past. 0 is a no-op.
+func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, lastBlockID types.BlockID, dynamic time.Duration) {
 	if dynamic <= 0 {
 		cs.pacingStarted = false
 		return
 	}
 	now := cmttime.Now()
-	// Without a paced anchor keep the legacy start: grid nodes start ~TimeoutCommit after
-	// the same commit, so anchoring on the commit would run one floor late (#3643).
+	// Without a paced own start keep the legacy one: grid nodes start ~TimeoutCommit after
+	// the same commit, so anchoring on the commit would run one floor late (#3643). An earlier
+	// proposal timestamp then moves only the paced deadline, never this check.
 	bootstrap := cs.rs.CommitTime.IsZero() || !cs.pacingStarted || prevStartTime.After(cs.rs.CommitTime)
 	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
-	if deadline := prevStartTime.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
+	anchor, p := prevStartTime, cs.rs.Proposal
+	pulled := p != nil && !cs.replayMode && !p.BlockID.IsZero() &&
+		p.BlockID.Equals(lastBlockID) && p.Timestamp.Before(prevStartTime)
+	if pulled {
+		anchor = p.Timestamp
+	}
+	if deadline := anchor.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
 		cs.rs.StartTime = deadline
 	}
 	wait := cs.rs.StartTime.Sub(now)
@@ -1047,6 +1055,9 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
 		if wait == 0 {
 			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+		}
+		if pulled {
+			cs.metrics.PacingBypass.With("reason", "proposal").Add(1)
 		}
 	}
 }

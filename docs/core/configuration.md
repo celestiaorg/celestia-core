@@ -563,9 +563,11 @@ start times of consecutive heights. It has no `config.toml` setting, and `0`
 (the default) disables it, leaving the behaviour above unchanged. When it is set,
 a node starts height `H+1` at
 
-`max(now, CommitTime(H) + timeout_commit, StartTime(H) + dynamic_timeout_commit)`
+`max(now, CommitTime(H) + timeout_commit, min(StartTime(H), ProposalTime(H)) + dynamic_timeout_commit)`
 
-where `StartTime(H)` is when the node started height `H` on its own clock. A node
+where `StartTime(H)` is when the node started height `H` on its own clock and
+`ProposalTime(H)` is the timestamp the proposer signed into the committed proposal
+of `H` (ignored when the node did not receive that proposal, and in WAL replay). A node
 with no start on that schedule keeps `max(now, CommitTime(H) + timeout_commit)`
 for one height and paces from there: on the first height after start-up, when `H`
 was committed before its `StartTime` (it fell behind, or its clock stepped back),
@@ -582,9 +584,12 @@ replay is never held); `skip_timeout_commit` is ignored while
 height start round 0 at once, and a node commits on a +2/3 majority from any step,
 which is how a lagging node catches up without waiting at every height.
 
-The floor is per node, start to start on its own clock: nodes that started a
-height at different times keep that offset, so the network-wide interval is
-`dynamic_timeout_commit` on average, not at every height. With a short
+The floor runs from the earlier of the node's own start and the proposer's
+timestamp, so a node that started a height late (after catch-up or a restart)
+returns to the proposer's schedule in one height, while a later timestamp is
+ignored. Clock skew between a node and the proposer moves its start earlier by at
+most that skew, never later, and a backdated timestamp brings the next start no
+earlier than `max(now, CommitTime(H) + timeout_commit)`. With a short
 `timeout_commit`, a validator whose precommit arrives after the next proposal is
 built may be absent from its `LastCommit`. Applications that move pacing to the
 dynamic floor return a short `timeout_commit` (celestia-app v11: 100ms, a window
