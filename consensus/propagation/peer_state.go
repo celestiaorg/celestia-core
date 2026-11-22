@@ -18,21 +18,12 @@ const (
 	// that can be cached per peer. Keeps the lowest heights when full.
 	MaxUnverifiedProposals = 24
 
-	// MaxPeerStateHeights caps the heights a PeerState tracks part state and
-	// request counters for. The reactor only tracks heights it holds a
-	// proposal for, from the last committed height up, and pruning on commit
-	// drops lower ones, so honest use needs a few heights. A full PeerState
-	// keeps its lowest heights, which are the next ones to commit, and refuses
-	// higher ones.
+	// MaxPeerStateHeights caps the heights a PeerState tracks. A full
+	// PeerState keeps its lowest heights and refuses higher ones.
 	MaxPeerStateHeights = 16
 
 	// MaxPeerStateRoundsPerHeight caps the rounds a PeerState tracks per
-	// height. Consensus reaches round 32 at one height only after a stall of
-	// several minutes. A full height evicts its lowest round to admit a new
-	// one. Rounds are never refused: after a long stall the node must still
-	// request parts for the current round, which is the highest, and for an
-	// older round that delayed precommits commit. The highest round is never
-	// the lowest of a full height, so it is never evicted.
+	// height. A full height evicts its lowest round to admit a new one.
 	MaxPeerStateRoundsPerHeight = 32
 )
 
@@ -176,6 +167,11 @@ func admitLowest[V any](m map[int64]V, key int64, limit int) bool {
 
 // admitEvictLowest makes room for key in m, which holds at most limit keys,
 // by evicting the lowest key when m is full and key is not present.
+//
+// Rounds are never refused: after a long stall the node must still request
+// parts for the current round, which is the highest, and for an older round
+// that delayed precommits commit. The highest round is never the lowest of a
+// full height, so it is never evicted.
 func admitEvictLowest[V any](m map[int32]V, key int32, limit int) {
 	if _, ok := m[key]; ok || len(m) < limit {
 		return
@@ -285,56 +281,6 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	}
 }
 
-<<<<<<< HEAD
-=======
-// RequestParts records the parts as requested from the peer and sends the
-// want. Recording first means a fast reply is never treated as unrequested; a
-// failed send rolls back only the parts this call added. It sends nothing and
-// returns false if the cap on tracked heights refuses the state.
-func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits.BitArray, wantMessage p2p.Envelope) bool {
-	if partsToRequest == nil || partsToRequest.Size() == 0 {
-		d.logger.Error("peer state requests is nil or empty")
-		return false
-	}
-
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	// a part that arrives without a recorded request is dropped, so a want
-	// the caps refuse to record is not sent.
-	partState := d.initialize(height, round, partsToRequest.Size())
-	if partState == nil {
-		return false
-	}
-
-	// remember what was already marked, so a failed send can undo only its
-	// own marks
-	addedToRequests := partsToRequest.Sub(partState.requests)
-	addedToEverRequested := partsToRequest.Sub(partState.everRequested)
-	previousRequestedAt := partState.requestedAt
-
-	// mark the parts as requested before sending, so a fast reply isn't
-	// treated as unrequested
-	partState.addRequests(partsToRequest)
-
-	sent := d.peer.TrySend(wantMessage)
-	if sent {
-		return true
-	}
-
-	// the peer never got the request, so undo this call's marks. Earlier
-	// marks stay: those requests did go out.
-	for _, partIndex := range addedToRequests.GetTrueIndices() {
-		partState.requests.SetIndex(partIndex, false)
-	}
-	for _, partIndex := range addedToEverRequested.GetTrueIndices() {
-		partState.everRequested.SetIndex(partIndex, false)
-	}
-	partState.requestedAt = previousRequestedAt
-	return false
-}
-
->>>>>>> d7c766f (fix(propagation): [high] bound per-peer round state inside PeerState (#3674))
 // SetHave sets the have bit for a given part.
 // Returns an error if the state is not initialized.
 func (d *PeerState) SetHave(height int64, round int32, part int) error {
@@ -539,61 +485,6 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	delete(d.unverifiedProposals, height)
 }
 
-<<<<<<< HEAD
-=======
-// GrantPushAllowance lets the peer that sent cb push the parts no mempool can
-// rebuild, unrequested. Only the first grant counts, so resending the compact
-// block does not refill it.
-func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
-	height, round := cb.Proposal.Height, cb.Proposal.Round
-	totalParts := cb.Proposal.BlockID.PartSetHeader.Total
-
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	ps := d.initialize(height, round, int(totalParts)*2)
-	if ps == nil {
-		return
-	}
-	if !ps.pushGranted {
-		ps.pushGranted = true
-		ps.pushAllowance = uncoveredParts(cb.Blobs, totalParts, types.BlockPartSizeBytes, cb.LastLen)
-	}
-}
-
-// ConsumePushAllowance reports whether the peer may push the part with this
-// index unrequested. Each part can be pushed once.
-func (d *PeerState) ConsumePushAllowance(height int64, round int32, index uint32) bool {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	ps := d.state[height][round]
-	if ps == nil {
-		return false
-	}
-	for i, allowed := range ps.pushAllowance {
-		if allowed == index {
-			ps.pushAllowance = append(ps.pushAllowance[:i], ps.pushAllowance[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// Requested reports whether this node has ever requested the part from the
-// peer, including requests that have since expired.
-func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
-	d.mtx.RLock()
-	defer d.mtx.RUnlock()
-
-	partState := d.state[height][round]
-	if partState == nil {
-		return false
-	}
-	return partState.everRequested.GetIndex(int(index))
-}
-
->>>>>>> d7c766f (fix(propagation): [high] bound per-peer round state inside PeerState (#3674))
 type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray

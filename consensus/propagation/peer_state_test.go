@@ -5,15 +5,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	tmock "github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
-	"github.com/cometbft/cometbft/p2p/mocks"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -503,66 +500,57 @@ func TestPeerState_capsRoundsPerHeight(t *testing.T) {
 }
 
 // TestPeerState_requestsPartsPastRoundCap checks that a node stalled past
-// MaxPeerStateRoundsPerHeight rounds at one height can still request parts
-// for, and be pushed parts of, the newest round.
+// MaxPeerStateRoundsPerHeight rounds at one height can still record requests
+// for the newest round.
 func TestPeerState_requestsPartsPastRoundCap(t *testing.T) {
-	peer := &mocks.Peer{}
-	peer.On("TrySend", tmock.Anything).Return(true)
-	ps := newPeerState(context.Background(), peer, log.NewNopLogger())
+	ps := newTestPeerState()
 	const height = int64(3)
 	for r := int32(0); r < MaxPeerStateRoundsPerHeight; r++ {
 		ps.Initialize(height, r, 4)
 	}
 
 	round := int32(MaxPeerStateRoundsPerHeight)
-	require.True(t, ps.RequestParts(height, round, createBitArray(4, []int{1}), p2p.Envelope{}))
-	require.True(t, ps.Requested(height, round, 1))
-
-	blockID := types.BlockID{PartSetHeader: types.PartSetHeader{Total: 1}}
-	ps.GrantPushAllowance(&proptypes.CompactBlock{Proposal: types.Proposal{Height: height, Round: round + 1, BlockID: blockID}})
-	require.True(t, ps.ConsumePushAllowance(height, round+1, 0))
+	ps.AddRequests(height, round, createBitArray(4, []int{1}))
+	requests, has := ps.GetRequests(height, round)
+	require.True(t, has)
+	require.True(t, requests.GetIndex(1))
 }
 
 // TestPeerState_requestsOlderCommitRoundPastCap checks that a node can
-// request parts for an older round that delayed precommits commit, after newer
-// rounds filled the height, and that the newest round stays tracked.
+// record requests for an older round that delayed precommits commit, after
+// newer rounds filled the height, and that the newest round stays tracked.
 func TestPeerState_requestsOlderCommitRoundPastCap(t *testing.T) {
-	peer := &mocks.Peer{}
-	peer.On("TrySend", tmock.Anything).Return(true)
-	ps := newPeerState(context.Background(), peer, log.NewNopLogger())
+	ps := newTestPeerState()
 	const height = int64(3)
 	for r := int32(1); r <= MaxPeerStateRoundsPerHeight; r++ {
 		ps.Initialize(height, r, 4)
 	}
 
-	require.True(t, ps.RequestParts(height, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
-	require.True(t, ps.Requested(height, 0, 1))
-	_, has := ps.GetHaves(height, MaxPeerStateRoundsPerHeight)
+	ps.AddRequests(height, 0, createBitArray(4, []int{1}))
+	requests, has := ps.GetRequests(height, 0)
+	require.True(t, has)
+	require.True(t, requests.GetIndex(1))
+	_, has = ps.GetHaves(height, MaxPeerStateRoundsPerHeight)
 	require.True(t, has, "newest round must stay tracked")
 }
 
-// TestPeerState_refusedStateIsNotUsed checks that RequestParts and
-// GrantPushAllowance do nothing, rather than panic, when the height cap
-// refuses the height.
+// TestPeerState_refusedStateIsNotUsed checks that the writers do nothing,
+// rather than panic, when the height cap refuses the height.
 func TestPeerState_refusedStateIsNotUsed(t *testing.T) {
-	peer := &mocks.Peer{}
-	ps := newPeerState(context.Background(), peer, log.NewNopLogger())
+	ps := newTestPeerState()
 	for h := int64(2); h < 2+MaxPeerStateHeights; h++ {
 		ps.Initialize(h, 0, 4)
 	}
 	height := int64(2 + MaxPeerStateHeights)
 
 	require.NotPanics(t, func() {
-		require.False(t, ps.RequestParts(height, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
+		ps.Initialize(height, 0, 4)
+		ps.AddHaves(height, 0, createBitArray(4, []int{1}))
+		ps.AddWants(height, 0, createBitArray(4, []int{1}))
+		ps.AddRequests(height, 0, createBitArray(4, []int{1}))
 	})
-	peer.AssertNotCalled(t, "TrySend", tmock.Anything)
-	require.False(t, ps.Requested(height, 0, 1))
-
-	blockID := types.BlockID{PartSetHeader: types.PartSetHeader{Total: 1}}
-	require.NotPanics(t, func() {
-		ps.GrantPushAllowance(&proptypes.CompactBlock{Proposal: types.Proposal{Height: height, BlockID: blockID}})
-	})
-	require.False(t, ps.ConsumePushAllowance(height, 0, 0))
+	_, has := ps.GetRequests(height, 0)
+	require.False(t, has)
 }
 
 // TestPeerState_capsHeights checks that no caller can grow a peer's part
