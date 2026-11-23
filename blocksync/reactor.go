@@ -49,10 +49,10 @@ type consensusReactor interface {
 type ReactorOption func(*Reactor)
 
 // ReactorMaxRequesters sets how many blocks are requested ahead of the one
-// being applied. Values below 2 would stall sync and are ignored.
+// being applied. Zero keeps the default.
 func ReactorMaxRequesters(n int) ReactorOption {
 	return func(bcR *Reactor) {
-		if n >= 2 {
+		if n != 0 {
 			bcR.pool.maxRequesters = n
 		}
 	}

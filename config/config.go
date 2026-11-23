@@ -1166,16 +1166,10 @@ type BlockSyncConfig struct {
 	Version    string `mapstructure:"version"`
 	VerifyData bool   `mapstructure:"verify_data"`
 	// MaxRequesters is how many blocks are requested ahead of the one being
-	// applied. Worst-case memory is MaxRequesters x max block size.
+	// applied (0 means the default of 40). Worst-case memory is
+	// MaxRequesters x max block size.
 	MaxRequesters int `mapstructure:"max_requesters"`
 }
-
-const (
-	// MinBlockSyncMaxRequesters is the smallest window: applying block H needs H+1.
-	MinBlockSyncMaxRequesters = 2
-	// MaxBlockSyncMaxRequesters caps the window to bound memory.
-	MaxBlockSyncMaxRequesters = 1000
-)
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
 func DefaultBlockSyncConfig() *BlockSyncConfig {
@@ -1193,9 +1187,10 @@ func TestBlockSyncConfig() *BlockSyncConfig {
 
 // ValidateBasic performs basic validation.
 func (cfg *BlockSyncConfig) ValidateBasic() error {
-	if cfg.MaxRequesters < MinBlockSyncMaxRequesters || cfg.MaxRequesters > MaxBlockSyncMaxRequesters {
-		return fmt.Errorf("max_requesters must be in [%d, %d], got %d",
-			MinBlockSyncMaxRequesters, MaxBlockSyncMaxRequesters, cfg.MaxRequesters)
+	// 0 means the default. Below 2 sync stalls (block H needs H+1); the cap
+	// bounds memory.
+	if cfg.MaxRequesters != 0 && (cfg.MaxRequesters < 2 || cfg.MaxRequesters > 1000) {
+		return fmt.Errorf("max_requesters must be 0 (default) or in [2, 1000], got %d", cfg.MaxRequesters)
 	}
 	switch cfg.Version {
 	case "v0":

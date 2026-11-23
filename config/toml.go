@@ -525,7 +525,8 @@ version = "{{ .BlockSync.Version }}"
 # Default: true
 verify_data = {{ .BlockSync.VerifyData }}
 
-# Number of blocks requested ahead of the one being applied, in [2, 1000].
+# Number of blocks requested ahead of the one being applied, in [2, 1000]
+# (0 means the default).
 # Worst-case memory is max_requesters x max block size.
 # Default: 40
 max_requesters = {{ .BlockSync.MaxRequesters }}
