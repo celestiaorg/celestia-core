@@ -47,10 +47,10 @@ const (
 	StoredPartsPerSecond = 2000
 
 	// StoredPartsPerPeerPerSecond is how many block parts per second this node
-	// loads from the block store to serve one peer's catchup wants. It is an
-	// eighth of StoredPartsPerSecond, so one peer cannot use up the shared
-	// budget.
-	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 8
+	// loads from the block store to serve one peer's catchup wants. It is a
+	// quarter of StoredPartsPerSecond, so one peer cannot use up the shared
+	// budget, and two serving peers match the catchup speed without it.
+	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 4
 
 	// StoredPartsPerPeerBurst is the burst of the per-peer budget. It covers
 	// what the per-peer rate refills in a full catchup retry cycle.
