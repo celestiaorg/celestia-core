@@ -1170,3 +1170,58 @@ func TestDigestSignBytes_SizeDoesNotGrow(t *testing.T) {
 	require.Less(t, len(largeDigest), 512)
 	require.Greater(t, len(largeFull), 100_000)
 }
+
+// hashTxMetaDataReference is the straightforward version of hashTxMetaData:
+// it hashes the protoio.MarshalDelimited encoding of every entry.
+func hashTxMetaDataReference(t testing.TB, txMetaData []TxMetaData) []byte {
+	hasher := tmhash.New()
+	for _, entry := range txMetaData {
+		encodedEntry, err := protoio.MarshalDelimited(entry.ToProto())
+		require.NoError(t, err)
+		hasher.Write(encodedEntry)
+	}
+	return hasher.Sum(nil)
+}
+
+// TestHashTxMetaData_MatchesMarshalDelimited ensures the allocation-free
+// hashing produces the same hash as hashing the MarshalDelimited encoding of
+// every entry.
+func TestHashTxMetaData_MatchesMarshalDelimited(t *testing.T) {
+	const maxUint32 = ^uint32(0)
+
+	testCases := []struct {
+		name       string
+		txMetaData []TxMetaData
+	}{
+		{"no entries", nil},
+		{"one entry", newDigestTestCompactBlock(1).Blobs},
+		{"many entries", newDigestTestCompactBlock(20_000).Blobs},
+		{"empty entry", []TxMetaData{{}}},
+		{"empty hash", []TxMetaData{{Start: 1, End: 2}}},
+		{"long hash", []TxMetaData{{Hash: rand.Bytes(300), Start: 1, End: 2}}},
+		{"max offsets", []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: maxUint32, End: maxUint32}}},
+		{"entries of different sizes", []TxMetaData{
+			{Hash: rand.Bytes(300), Start: maxUint32, End: maxUint32},
+			{},
+			{Hash: rand.Bytes(tmhash.Size), Start: 1, End: 2},
+		}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := hashTxMetaData(tc.txMetaData)
+			require.NoError(t, err)
+			require.Equal(t, hashTxMetaDataReference(t, tc.txMetaData), actual)
+		})
+	}
+}
+
+func BenchmarkHashTxMetaData(b *testing.B) {
+	txMetaData := newDigestTestCompactBlock(50_000).Blobs
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := hashTxMetaData(txMetaData)
+		require.NoError(b, err)
+	}
+}

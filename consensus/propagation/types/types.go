@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
@@ -128,16 +129,35 @@ func (c *CompactBlock) DigestSignBytes() ([]byte, error) {
 
 // hashTxMetaData returns one hash covering every tx metadata entry (tx hash,
 // start and end), so changing any entry changes the hash.
+//
+// Each entry is hashed as its length-prefixed protobuf encoding, the same
+// bytes protoio.MarshalDelimited produces. One proto value and one buffer are
+// reused for every entry so hashing does not allocate per tx.
 func hashTxMetaData(txMetaData []TxMetaData) ([]byte, error) {
-	encodedEntries := make([]byte, 0)
-	for _, entry := range txMetaData {
-		encodedEntry, err := protoio.MarshalDelimited(entry.ToProto())
-		if err != nil {
+	hasher := tmhash.New()
+	var protoEntry protoprop.TxMetaData
+	var buffer []byte
+
+	for i := range txMetaData {
+		protoEntry.Hash = txMetaData[i].Hash
+		protoEntry.Start = txMetaData[i].Start
+		protoEntry.End = txMetaData[i].End
+
+		entrySize := protoEntry.Size()
+		maxEncodedSize := binary.MaxVarintLen64 + entrySize
+		if cap(buffer) < maxEncodedSize {
+			buffer = make([]byte, maxEncodedSize)
+		}
+		buffer = buffer[:maxEncodedSize]
+
+		prefixSize := binary.PutUvarint(buffer, uint64(entrySize))
+		encodedSize := prefixSize + entrySize
+		if _, err := protoEntry.MarshalToSizedBuffer(buffer[prefixSize:encodedSize]); err != nil {
 			return nil, err
 		}
-		encodedEntries = append(encodedEntries, encodedEntry...)
+		hasher.Write(buffer[:encodedSize])
 	}
-	return tmhash.Sum(encodedEntries), nil
+	return hasher.Sum(nil), nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
