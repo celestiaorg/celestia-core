@@ -301,6 +301,8 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
+	types.SetParallelCommitVerify(config.ParallelCommitVerify)
+
 	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 	if err != nil {
 		return nil, err
