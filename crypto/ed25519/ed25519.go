@@ -151,7 +151,22 @@ func (pubKey PubKey) VerifySignature(msg []byte, sig []byte) bool {
 		return false
 	}
 
-	return ed25519.Verify(ed25519.PublicKey(pubKey), msg, sig)
+	if !verifyCacheEnabled {
+		return ed25519.Verify(ed25519.PublicKey(pubKey), msg, sig)
+	}
+	if len(pubKey) != PubKeySize {
+		// Not cacheable; keep the stock behaviour (ed25519.Verify panics).
+		return ed25519.Verify(ed25519.PublicKey(pubKey), msg, sig)
+	}
+	k := verifyCacheKey(pubKey, msg, sig)
+	if vcache.has(k) {
+		return true
+	}
+	ok := ed25519.Verify(ed25519.PublicKey(pubKey), msg, sig)
+	if ok {
+		vcache.add(k)
+	}
+	return ok
 }
 
 func (pubKey PubKey) String() string {
