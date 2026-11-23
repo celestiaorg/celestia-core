@@ -597,10 +597,13 @@ own start-to-start interval can be shorter. Let the slack be
 A node whose legacy start lands ahead of the schedule (restart, catch-up exit,
 backward clock step, legacy pacing) moves the network earlier by that lead (at
 most the slack), in steps of at most `dynamic_timeout_commit/2` at its next turns
-as proposer, then the schedule holds again. An honest proposer whose clock is
-behind by more than its PrepareProposal time re-phases the schedule the same way
-if that excess is within the slack; otherwise it pulls the schedule earlier at
-each of its turns as proposer, by at most `min(dynamic_timeout_commit/2, slack)`.
+as proposer, then the schedule holds again. A validator whose clock is behind
+pulls nothing while it keeps its earlier schedule; once it re-anchors on its own
+commit (restart, backward step past its commit, legacy pacing) it shortens one
+interval at each of its turns as proposer, by at most
+`min(dynamic_timeout_commit/2, slack)`, so with stake share `f` it lowers the
+mean interval by at most `f * min(dynamic_timeout_commit/2, slack)`, the same
+bound as backdating.
 Timestamps never move a start later. Proposers with stake share `f` that
 backdate their proposals shorten the mean interval by at most
 `f * dynamic_timeout_commit/2`, and a node never starts before
