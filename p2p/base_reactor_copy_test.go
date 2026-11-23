@@ -76,7 +76,7 @@ func TestBaseReactorCopyStopsProcessorWithoutBaseOnStop(t *testing.T) {
 	require.NoError(t, r.Start())
 	require.NoError(t, r.Stop())
 	// Stop cancels the processor itself, even though OnStop is overridden.
-	require.Error(t, r.ctx.Err(), "processor context not cancelled by Stop")
+	require.Error(t, r.ctx.Err(), "processor context not canceled by Stop")
 
 	msg, err := (&p2pproto.PexAddrs{Addrs: []p2pproto.NetAddress{{ID: "x"}}}).Marshal()
 	require.NoError(t, err)

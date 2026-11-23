@@ -157,7 +157,7 @@ func (br *BaseReactor) Start() error {
 	return nil
 }
 
-// Stop stops the reactor and its processor. The processor is cancelled here
+// Stop stops the reactor and its processor. The processor is canceled here
 // because many reactors override OnStop without calling BaseReactor.OnStop.
 func (br *BaseReactor) Stop() error {
 	err := br.BaseService.Stop()
