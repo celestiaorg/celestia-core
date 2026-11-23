@@ -1175,6 +1175,9 @@ type BlockSyncConfig struct {
 	// applied (0 means the default of 40). Worst-case memory is
 	// MaxRequesters x max block size.
 	MaxRequesters int `mapstructure:"max_requesters"`
+	// Pipeline prepares the next block while the current one is applied.
+	// The synced blocks and state are identical either way.
+	Pipeline bool `mapstructure:"pipeline"`
 }
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
@@ -1183,6 +1186,7 @@ func DefaultBlockSyncConfig() *BlockSyncConfig {
 		Version:       "v0",
 		VerifyData:    true,
 		MaxRequesters: 40,
+		Pipeline:      true,
 	}
 }
 

@@ -58,6 +58,13 @@ func ReactorMaxRequesters(n int) ReactorOption {
 	}
 }
 
+// ReactorPipeline enables preparing the next block while the current one is applied.
+func ReactorPipeline(enabled bool) ReactorOption {
+	return func(bcR *Reactor) {
+		bcR.pipeline = enabled
+	}
+}
+
 // ReactorVerifyData sets the verifyData field of the reactor.
 func ReactorVerifyData(verifyData bool) ReactorOption {
 	return func(bcR *Reactor) {
@@ -96,6 +103,10 @@ type Reactor struct {
 	switchToConsensusMs int
 
 	metrics *Metrics
+
+	// pipeline prepares the next block while the current one is applied
+	// (see pipeline.go).
+	pipeline bool
 }
 
 // NewReactor returns new reactor instance.
@@ -150,6 +161,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 		traceClient:  traceClient,
+		pipeline:     true,
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -412,6 +424,14 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 
 	didProcessCh := make(chan struct{}, 1)
 
+	// Speculative work for the next block, see pipeline.go.
+	var pendingSpec *blockSpec
+	defer func() {
+		if pendingSpec != nil {
+			<-pendingSpec.done
+		}
+	}()
+
 	initialCommitHasExtensions := (bcR.initialState.LastBlockHeight > 0 && bcR.store.LoadBlockExtendedCommit(bcR.initialState.LastBlockHeight) != nil)
 
 	go func() {
@@ -550,22 +570,37 @@ FOR_LOOP:
 			// Try again quickly next loop.
 			didProcessCh <- struct{}{}
 
-			firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
-			if err != nil {
-				bcR.Logger.Error("failed to make ",
-					"height", first.Height,
-					"err", err.Error())
-				break FOR_LOOP
+			// Take the speculative result computed while the previous block
+			// was applied (if any).
+			spec := pendingSpec
+			pendingSpec = nil
+			if spec != nil {
+				<-spec.done
 			}
-			firstPartSetHeader := firstParts.Header()
-			firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+
+			firstParts, firstID, ok := spec.partsFor(first)
+			var err error
+			if !ok {
+				if firstParts, firstID, err = blockPartsAndID(first); err != nil {
+					bcR.Logger.Error("failed to make ",
+						"height", first.Height,
+						"err", err.Error())
+					break FOR_LOOP
+				}
+			}
 
 			// Start timing validation
 			validationStart := time.Now()
 
 			// Fully verify second.LastCommit to ensure all signatures are valid.
-			err = state.Validators.VerifyCommit(
-				chainID, firstID, first.Height, second.LastCommit)
+			if spec.commitVerified(first, second, state.Validators) {
+				// Already fully verified against an identical validator set
+				// for exactly these block objects.
+				err = nil
+			} else {
+				err = state.Validators.VerifyCommit(
+					chainID, firstID, first.Height, second.LastCommit)
+			}
 
 			if err == nil {
 				// Validate the block before we persist it.
@@ -643,6 +678,14 @@ FOR_LOOP:
 			}
 
 			bcR.pool.PopRequest()
+
+			// Prepare block H+1 while H is applied below.
+			// Validators(H+1) == NextValidators before applying H.
+			if bcR.pipeline && canSpeculate(second) {
+				if nextFirst, nextSecond, _ := bcR.pool.PeekTwoBlocks(); nextFirst == second {
+					pendingSpec = startBlockSpec(chainID, second, nextSecond, state.NextValidators.Copy(), bcR.Logger)
+				}
+			}
 
 			// Start timing block save
 			saveStart := time.Now()

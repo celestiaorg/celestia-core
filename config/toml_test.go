@@ -184,3 +184,7 @@ func TestBlockstoreMemtableDefaultsForOldConfig(t *testing.T) {
 func TestParallelCommitVerifyDefault(t *testing.T) {
 	require.True(t, config.DefaultConfig().ParallelCommitVerify)
 }
+
+func TestBlockSyncPipelineDefault(t *testing.T) {
+	require.True(t, config.DefaultConfig().BlockSync.Pipeline)
+}

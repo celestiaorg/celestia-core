@@ -535,6 +535,11 @@ verify_data = {{ .BlockSync.VerifyData }}
 # Default: 40
 max_requesters = {{ .BlockSync.MaxRequesters }}
 
+# If true, prepare the next block (part set and commit verification) while
+# the current one is applied. The synced blocks and state are identical.
+# Default: true
+pipeline = {{ .BlockSync.Pipeline }}
+
 #######################################################
 ###         Consensus Configuration Options         ###
 #######################################################
