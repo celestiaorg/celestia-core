@@ -262,7 +262,13 @@ func TestPipelineEquivalence(t *testing.T) {
 	require.Zero(t, on.misses[3], "speculated validator set must match state.Validators")
 	require.Zero(t, on.misses[2])
 	require.Equal(t, [5]int64{}, off.stats)
-	require.Greater(t, on.stats[2], maxHeight/2, "pipelined commit verification should be used for most blocks")
+	// With a window of 2 requesters, H+2 is never downloaded while H is
+	// applied, so the commit cannot be speculated (parts still are).
+	if maxRequesters > 2 {
+		require.Greater(t, on.stats[2], maxHeight/2, "pipelined commit verification should be used for most blocks")
+	} else {
+		require.Equal(t, on.stats[3], on.misses[0], "every commit miss must be a missing H+2")
+	}
 	require.Zero(t, on.stats[4])
 }
 
