@@ -26,7 +26,7 @@ import (
 // In every other case (any failure, panic, or unsupported input) the
 // parallel result is discarded and the original sequential code runs
 // unchanged, so the returned error (type, message, precedence and
-// early-return behaviour) is by construction identical to the original.
+// early-return behavior) is by construction identical to the original.
 //
 // Batch verification of a set of signatures accepts iff every signature in
 // it is individually valid (ZIP-215 cofactored verification, up to the

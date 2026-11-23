@@ -197,7 +197,7 @@ func pipelineFixture(t *testing.T) (*types.GenesisDoc, map[string]types.PrivVali
 	genDoc, privVals := randGenesisDoc(6, false, 10)
 	genDoc.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 0
 	byAddr := map[string]types.PrivValidator{}
-	pubs := make([]types.GenesisValidator, 0)
+	pubs := make([]types.GenesisValidator, 0, len(genDoc.Validators))
 	for _, pv := range privVals {
 		pk, err := pv.GetPubKey()
 		require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestPipelineEquivalence(t *testing.T) {
 	require.Zero(t, on.misses[3], "speculated validator set must match state.Validators")
 	require.Zero(t, on.misses[2])
 	require.Equal(t, [5]int64{}, off.stats)
-	require.Greater(t, on.stats[2], int64(maxHeight/2), "pipelined commit verification should be used for most blocks")
+	require.Greater(t, on.stats[2], maxHeight/2, "pipelined commit verification should be used for most blocks")
 	require.Zero(t, on.stats[4])
 }
 
