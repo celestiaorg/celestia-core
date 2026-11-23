@@ -243,6 +243,24 @@ func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	}
 }
 
+// TryQueueEnvelope attempts to queue an unprocessed envelope and reports
+// whether it was queued. If the queue is full, it drops the envelope without
+// unmarshalling it.
+func (br *BaseReactor) TryQueueEnvelope(e UnprocessedEnvelope) bool {
+	if len(br.incoming) == cap(br.incoming) {
+		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
+		return false
+	}
+	select {
+	case <-br.ctx.Done():
+		return false
+	case br.incoming <- br.unmarshalEnvelope(e):
+		return true
+	default:
+		return false
+	}
+}
+
 func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult {
 	var (
 		mt  = br.chIDs[e.ChannelID]
