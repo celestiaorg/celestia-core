@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/cometbft/cometbft/libs/trace"
 
@@ -76,6 +77,12 @@ type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
+	// Reactors embed BaseReactor by value (x.BaseReactor = *NewBaseReactor(...)),
+	// while the processor goroutine keeps the pointer NewBaseReactor returned.
+	// State written after construction must therefore be shared through a
+	// pointer, or the processor never sees it.
+	sw *atomic.Pointer[Switch]
+
 	incoming     chan UnmarshalResult
 	queueingFunc func(UnprocessedEnvelope)
 	unmarshalSem chan struct{}
@@ -113,6 +120,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil, // set by the switch later
+		sw:          new(atomic.Pointer[Switch]),
 		incoming:    make(chan UnmarshalResult, 100),
 		chIDs:       chIDs,
 		chPrechecks: chPrechecks,
@@ -128,6 +136,17 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	if base.processor == nil {
 		base.processor = ProcessorWithReactor(impl, base)
 	}
+
+	// Many reactors override OnStop without calling BaseReactor.OnStop, but
+	// BaseService.Stop always closes Quit, which every copy shares.
+	quit := base.Quit()
+	go func() {
+		select {
+		case <-quit:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 
 	go func() {
 		defer func() {
@@ -266,8 +285,12 @@ func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult 
 		}
 	}
 
-	res.Msg = proto.Clone(mt)
-	res.Err = proto.Unmarshal(e.Message, res.Msg)
+	msg := proto.Clone(mt)
+	if err := proto.Unmarshal(e.Message, msg); err != nil {
+		res.Err = err
+		return res
+	}
+	res.Msg = msg
 	return res
 }
 
@@ -342,15 +365,31 @@ func (br *BaseReactor) ProtectPanic(peer Peer) {
 }
 
 func disconnectPeer(baseReactor *BaseReactor, peer Peer, reason, reactor string) {
-	// the switch is added for all reactors so should be here. the worst case if not is
-	// that the peer doesn't get disconnected.
-	if baseReactor != nil && baseReactor.Switch != nil {
-		baseReactor.Switch.StopPeerForError(peer, reason, reactor)
+	if baseReactor == nil {
+		return
+	}
+	if sw := baseReactor.currentSwitch(); sw != nil {
+		sw.StopPeerForError(peer, reason, reactor)
 	}
 }
 
 func (br *BaseReactor) SetSwitch(sw *Switch) {
 	br.Switch = sw
+	if br.sw != nil {
+		br.sw.Store(sw)
+	}
+}
+
+// currentSwitch returns the switch set on any copy of this BaseReactor.
+// A zero-value BaseReactor (not built by NewBaseReactor) falls back to its
+// own field.
+func (br *BaseReactor) currentSwitch() *Switch {
+	if br.sw != nil {
+		if sw := br.sw.Load(); sw != nil {
+			return sw
+		}
+	}
+	return br.Switch
 }
 func (*BaseReactor) GetChannels() []*conn.ChannelDescriptor { return nil }
 func (*BaseReactor) AddPeer(Peer)                           {}
