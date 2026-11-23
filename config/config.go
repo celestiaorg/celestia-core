@@ -312,21 +312,22 @@ type BaseConfig struct {
 // DefaultBaseConfig returns a default base configuration for a CometBFT node
 func DefaultBaseConfig() BaseConfig {
 	return BaseConfig{
-		Version:              version.TMCoreSemVer,
-		Genesis:              defaultGenesisJSONPath,
-		PrivValidatorKey:     defaultPrivValKeyPath,
-		PrivValidatorState:   defaultPrivValStatePath,
-		NodeKey:              defaultNodeKeyPath,
-		Moniker:              defaultMoniker,
-		ProxyApp:             "tcp://127.0.0.1:36658",
-		ABCI:                 "socket",
-		LogLevel:             DefaultLogLevel,
-		LogFormat:            LogFormatPlain,
-		FilterPeers:          false,
-		DBBackend:            "pebbledb",
+		Version:            version.TMCoreSemVer,
+		Genesis:            defaultGenesisJSONPath,
+		PrivValidatorKey:   defaultPrivValKeyPath,
+		PrivValidatorState: defaultPrivValStatePath,
+		NodeKey:            defaultNodeKeyPath,
+		Moniker:            defaultMoniker,
+		ProxyApp:           "tcp://127.0.0.1:36658",
+		ABCI:               "socket",
+		LogLevel:           DefaultLogLevel,
+		LogFormat:          LogFormatPlain,
+		FilterPeers:        false,
+		DBBackend:          "pebbledb",
+		DBPath:             DefaultDataDir,
+		BlockstorePath:     DefaultDataDir,
+
 		ParallelCommitVerify: true,
-		DBPath:               DefaultDataDir,
-		BlockstorePath:       DefaultDataDir,
 	}
 }
 

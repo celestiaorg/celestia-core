@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"io"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -21,18 +22,11 @@ const (
 // node sets it once at start from config; it defaults to true.
 var parallelCommitVerify atomic.Bool
 
-// parallelCommitVerifyAccepted counts commits accepted by the parallel pass.
-var parallelCommitVerifyAccepted atomic.Int64
-
-// parallelCommitVerifySigs counts signatures handed to the parallel pass.
-var parallelCommitVerifySigs atomic.Int64
-
 func init() { parallelCommitVerify.Store(true) }
 
-// SetParallelCommitVerify enables or disables parallel commit verification
-// and returns the previous value.
-func SetParallelCommitVerify(enabled bool) bool {
-	return parallelCommitVerify.Swap(enabled)
+// SetParallelCommitVerify enables or disables parallel commit verification.
+func SetParallelCommitVerify(enabled bool) {
+	parallelCommitVerify.Store(enabled)
 }
 
 // tryParallelVerifyCommitBatch batch-verifies the commit in chunks on up to
@@ -46,23 +40,14 @@ func tryParallelVerifyCommitBatch(
 	votingPowerNeeded int64,
 	ignoreSig func(CommitSig) bool,
 	countSig func(CommitSig) bool,
-) (accepted bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			accepted = false
-		}
-	}()
-
+) bool {
 	idxs, ok := parallelCommitPrePass(vals, commit, votingPowerNeeded, ignoreSig, countSig)
 	if !ok {
 		return false
 	}
 
 	workers := runtime.GOMAXPROCS(0)
-	chunk := (len(idxs) + workers - 1) / workers
-	if chunk < parallelCommitVerifyMinChunk {
-		chunk = parallelCommitVerifyMinChunk
-	}
+	chunk := max((len(idxs)+workers-1)/workers, parallelCommitVerifyMinChunk)
 	proposerKey := vals.GetProposer().PubKey
 
 	var (
@@ -114,8 +99,9 @@ func parallelCommitPrePass(
 	return idxs, tallied > votingPowerNeeded && len(idxs) > 0
 }
 
-// verifyCommitChunk batch-verifies the signatures at idxs. It stops early,
-// returning false, once another chunk has failed.
+// verifyCommitChunk batch-verifies the signatures at idxs. It gives up as soon
+// as another chunk has failed, and never checks signatures one by one: a
+// failure is reported by the sequential code instead.
 func verifyCommitChunk(
 	chainID string,
 	vals *ValidatorSet,
@@ -133,7 +119,6 @@ func verifyCommitChunk(
 	if !supported || failed.Load() {
 		return false
 	}
-	parallelCommitVerifySigs.Add(int64(len(idxs)))
 	for _, idx := range idxs {
 		signBytes := commit.VoteSignBytes(chainID, int32(idx))
 		if err := bv.Add(vals.Validators[idx].PubKey, signBytes, commit.Signatures[idx].Signature); err != nil {
@@ -142,6 +127,10 @@ func verifyCommitChunk(
 	}
 	if failed.Load() {
 		return false
+	}
+	// Skip the per-signature fallback of Verify when the batch fails.
+	if bo, isBatchOnly := bv.(interface{ VerifyBatchOnly(io.Reader) bool }); isBatchOnly {
+		return bo.VerifyBatchOnly(crypto.CReader())
 	}
 	ok, _ = bv.Verify()
 	return ok
