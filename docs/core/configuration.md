@@ -559,8 +559,8 @@ Here's a brief summary of the timeouts:
 `timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
 timeout behave as described above. The application can also return
 `dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
-earliest start times of consecutive heights across the network, except once
-after a node resets ahead of that schedule (see below). It has no
+earliest start times of consecutive heights across the network, except while
+the schedule catches up with a node that reset ahead of it (see below). It has no
 `config.toml` setting, and `0` (the default) disables it, leaving the behaviour
 above unchanged. When it is set,
 a node starts height `H+1` at
@@ -595,12 +595,12 @@ thus holds for the earliest start of each height between resets; a pulled node's
 own start-to-start interval can be shorter. Let the slack be
 `dynamic_timeout_commit` minus the start-to-commit time minus `timeout_commit`.
 A node whose legacy start lands ahead of the schedule (restart, catch-up exit,
-backward clock step, legacy pacing) moves the network earlier once, at its next
-turn as proposer: one interval is shorter by at most
-`min(dynamic_timeout_commit/2, slack)`. An honest proposer whose clock is behind
-by more than its PrepareProposal time re-phases the schedule once if that excess
-is within the slack; otherwise it pulls the schedule earlier at each of its turns
-as proposer, by at most `min(dynamic_timeout_commit/2, slack, skew - PrepareProposal time)`.
+backward clock step, legacy pacing) moves the network earlier by that lead (at
+most the slack), in steps of at most `dynamic_timeout_commit/2` at its next turns
+as proposer, then the schedule holds again. An honest proposer whose clock is
+behind by more than its PrepareProposal time re-phases the schedule the same way
+if that excess is within the slack; otherwise it pulls the schedule earlier at
+each of its turns as proposer, by at most `min(dynamic_timeout_commit/2, slack)`.
 Timestamps never move a start later. Proposers with stake share `f` that
 backdate their proposals shorten the mean interval by at most
 `f * dynamic_timeout_commit/2`, and a node never starts before

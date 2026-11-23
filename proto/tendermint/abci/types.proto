@@ -540,7 +540,7 @@ message TimeoutInfo {
   google.protobuf.Duration timeout_precommit_delta   = 6 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_commit            = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration delayed_precommit_timeout = 8 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  // Floor on the interval between the earliest start times of consecutive heights (except once
-  // after a node resets ahead of that schedule); 0 disables it.
+  // Floor on the interval between the earliest start times of consecutive heights, except
+  // while the schedule catches up with a node that reset ahead of it; 0 disables it.
   google.protobuf.Duration dynamic_timeout_commit    = 9 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }
