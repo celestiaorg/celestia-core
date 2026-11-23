@@ -52,10 +52,6 @@ const (
 	// budget, and two serving peers match the catchup speed without it.
 	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 4
 
-	// StoredPartsPerPeerBurst is the burst of the per-peer budget. It covers
-	// what the per-peer rate refills in a full catchup retry cycle.
-	StoredPartsPerPeerBurst = int(StoredPartsPerPeerPerSecond * (RequestTimeout + RetryTime) / time.Second)
-
 	// StoredPartsPerPeerInitial is the per-peer budget of a new peer.
 	StoredPartsPerPeerInitial = StoredPartsPerPeerPerSecond
 
@@ -66,6 +62,15 @@ const (
 	// RequestIdleTimeout is how long a peer may send nothing before its
 	// outstanding catchup requests expire.
 	RequestIdleTimeout = RetryTime / 2
+)
+
+// StoredPartsPerPeerBurst is the burst of the per-peer budget: what the
+// per-peer rate refills in a full catchup retry cycle, but at most the shared
+// burst less StoredPartsPerPeerInitial. One peer then cannot use up the shared
+// burst: another peer can still get its initial share at once.
+var StoredPartsPerPeerBurst = min(
+	int(StoredPartsPerPeerPerSecond*(RequestTimeout+RetryTime)/time.Second),
+	int(types.MaxBlockPartsCount)-StoredPartsPerPeerInitial,
 )
 
 type Reactor struct {

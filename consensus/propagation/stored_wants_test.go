@@ -487,3 +487,19 @@ func TestNewPeerStartsWithSmallStoredPartsBudget(t *testing.T) {
 	b.mtx.Unlock()
 	require.Less(t, tokens, float64(StoredPartsPerPeerInitial), "the parts came from the initial balance")
 }
+
+// With the real limits, one peer that saved up its whole burst cannot use up
+// the shared burst, so other peers are still served.
+func TestFullPeerBurstLeavesSharedBudgetForOthers(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	r.storedPartsBudget = newTokenBucket(0, float64(types.MaxBlockPartsCount))
+	attacker := addRecordingPeer(t, r, 1_000_000)
+	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
+	honest := addRecordingPeer(t, r, 1_000_000)
+
+	for i := 0; i < 2*int(types.MaxBlockPartsCount)/int(ps.Total()); i++ {
+		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	}
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, honest.sentParts(), int(ps.Total()))
+}
