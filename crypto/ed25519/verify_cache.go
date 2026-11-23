@@ -25,12 +25,12 @@ const verifyCacheMax = 1 << 18
 
 type verifyCache struct {
 	mu        sync.Mutex
-	max       int
+	limit     int
 	cur, prev map[[32]byte]struct{}
 }
 
-func newVerifyCache(max int) *verifyCache {
-	return &verifyCache{max: max, cur: make(map[[32]byte]struct{})}
+func newVerifyCache(limit int) *verifyCache {
+	return &verifyCache{limit: limit, cur: make(map[[32]byte]struct{})}
 }
 
 var vcache = newVerifyCache(verifyCacheMax)
@@ -65,9 +65,9 @@ func (c *verifyCache) add(k [32]byte) {
 }
 
 // insert adds k to the current generation, rotating first if it is full, so
-// neither generation ever exceeds c.max entries. Callers must hold c.mu.
+// neither generation ever exceeds c.limit entries. Callers must hold c.mu.
 func (c *verifyCache) insert(k [32]byte) {
-	if len(c.cur) >= c.max {
+	if len(c.cur) >= c.limit {
 		c.prev, c.cur = c.cur, make(map[[32]byte]struct{})
 	}
 	c.cur[k] = struct{}{}

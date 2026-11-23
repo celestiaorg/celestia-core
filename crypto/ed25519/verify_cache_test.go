@@ -113,20 +113,20 @@ func cacheKeyN(i int) [32]byte {
 
 // TestVerifyCacheBounded re-hits old entries after each rotation (the pattern
 // that used to grow the current generation past its limit) and checks that no
-// generation ever exceeds max.
+// generation ever exceeds limit.
 func TestVerifyCacheBounded(t *testing.T) {
-	const max = 64
-	c := newVerifyCache(max)
+	const limit = 64
+	c := newVerifyCache(limit)
 	next := 0
 	for gen := 0; gen < 20; gen++ {
-		for i := 0; i < max; i++ {
+		for i := 0; i < limit; i++ {
 			c.add(cacheKeyN(next))
 			next++
 		}
 		for i := 0; i < next; i++ {
 			c.has(cacheKeyN(i))
-			require.LessOrEqual(t, len(c.cur), max)
-			require.LessOrEqual(t, len(c.prev), max)
+			require.LessOrEqual(t, len(c.cur), limit)
+			require.LessOrEqual(t, len(c.prev), limit)
 		}
 	}
 	// The most recently added key is always retained.
