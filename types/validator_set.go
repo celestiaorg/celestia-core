@@ -795,6 +795,21 @@ func (vals *ValidatorSet) verifyCommitLightInternal(
 
 	talliedVotingPower := int64(0)
 	votingPowerNeeded := vals.TotalVotingPower() * 2 / 3
+	var preVerified []sigCheck
+	if parallelSigVerify {
+		// len(commit.Signatures) == vals.Size(), so this is bounded by the set.
+		var idxs []int
+		for idx, cs := range commit.Signatures {
+			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
+				continue
+			}
+			idxs = append(idxs, idx)
+		}
+		preVerified = parallelVerify(len(commit.Signatures), idxs, func(idx int) bool {
+			//nolint:gosec
+			return vals.Validators[idx].PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), commit.Signatures[idx].Signature)
+		})
+	}
 	for idx, commitSig := range commit.Signatures {
 		// No need to verify absent or nil votes if not counting all signatures,
 		// but need to verify nil votes if counting all signatures.
@@ -806,10 +821,16 @@ func (vals *ValidatorSet) verifyCommitLightInternal(
 		// This means we don't need the validator address or to do any lookup.
 		val := vals.Validators[idx]
 
-		// Validate signature.
-		//nolint:gosec
-		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
+		// Validate signature (precomputed in parallel; identical result).
+		var sigOK bool
+		if preVerified != nil && preVerified[idx] != sigUnchecked {
+			sigOK = preVerified[idx] == sigValid
+		} else {
+			//nolint:gosec
+			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
+			sigOK = val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature)
+		}
+		if !sigOK {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 		}
 
@@ -883,6 +904,39 @@ func (vals *ValidatorSet) verifyCommitLightTrustingInternal(
 	//nolint:gosec
 	votingPowerNeeded := totalVotingPowerMulByNumerator / int64(trustLevel.Denominator)
 
+	var preVerified []sigCheck
+	if parallelSigVerify {
+		// len(commit.Signatures) is not bounded by the trusted set, so only
+		// schedule entries the sequential loop can reach: each maps to a
+		// distinct trusted validator, up to the first duplicate (where the
+		// loop returns its double-vote error). This bounds the work by
+		// vals.Size().
+		var (
+			idxs []int
+			seen = make(map[int32]struct{})
+		)
+		for idx, cs := range commit.Signatures {
+			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
+				continue
+			}
+			valIdx, val := vals.GetByAddress(cs.ValidatorAddress)
+			if val == nil {
+				continue
+			}
+			if _, dup := seen[valIdx]; dup {
+				break
+			}
+			seen[valIdx] = struct{}{}
+			idxs = append(idxs, idx)
+		}
+		preVerified = parallelVerify(len(commit.Signatures), idxs, func(idx int) bool {
+			cs := commit.Signatures[idx]
+			_, val := vals.GetByAddress(cs.ValidatorAddress)
+			//nolint:gosec
+			return val.PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
+		})
+	}
+
 	for idx, commitSig := range commit.Signatures {
 		// No need to verify absent or nil votes if not counting all signatures,
 		// but need to verify nil votes if counting all signatures.
@@ -902,10 +956,16 @@ func (vals *ValidatorSet) verifyCommitLightTrustingInternal(
 			}
 			seenVals[valIdx] = idx
 
-			// Validate signature.
-			//nolint:gosec
-			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-			if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
+			// Validate signature (precomputed in parallel; identical result).
+			var sigOK bool
+			if preVerified != nil && preVerified[idx] != sigUnchecked {
+				sigOK = preVerified[idx] == sigValid
+			} else {
+				//nolint:gosec
+				voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
+				sigOK = val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature)
+			}
+			if !sigOK {
 				return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 			}
 
