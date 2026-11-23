@@ -300,7 +300,7 @@ func TestReactorOnlyHasVoteIsLazy(t *testing.T) {
 	N := 1
 	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
 	defer cleanup()
-	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
+	reactors, _, eventBuses := startConsensusNet(t, css, N)
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
 
 	reactor := reactors[0]
@@ -314,23 +314,19 @@ func TestReactorOnlyHasVoteIsLazy(t *testing.T) {
 	p2p.AddPeerToReactorPeerSet(reactor.Switch, reactor, peer)
 	reactor.AddPeer(peer)
 
-	for i := 0; i < 3; i++ {
-		select {
-		case <-blocksSubs[0].Out():
-		case <-time.After(10 * time.Second):
-			t.Fatal("timed out waiting for a block")
+	// gossip runs in its own goroutines, so wait until each kind was sent
+	require.Eventually(t, func() bool {
+		counts := make(map[string]int)
+		for _, e := range peer.envelopes() {
+			counts[fmt.Sprintf("%T", e.Message)]++
 		}
-	}
+		return counts["*consensus.HasVote"] > 0 && counts["*consensus.NewRoundStep"] > 0 && counts["*consensus.Vote"] > 0
+	}, 10*time.Second, 10*time.Millisecond)
 
-	counts := make(map[string]int)
 	for _, e := range peer.envelopes() {
 		_, isHasVote := e.Message.(*cmtcons.HasVote)
 		require.Equal(t, isHasVote, e.Lazy, "%T on channel %#x", e.Message, e.ChannelID)
-		counts[fmt.Sprintf("%T", e.Message)]++
 	}
-	require.Positive(t, counts["*consensus.HasVote"], counts)
-	require.Positive(t, counts["*consensus.NewRoundStep"], counts)
-	require.Positive(t, counts["*consensus.Vote"], counts)
 }
 
 func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
