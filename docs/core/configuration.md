@@ -559,8 +559,9 @@ Here's a brief summary of the timeouts:
 `timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
 timeout behave as described above. The application can also return
 `dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
-earliest start times of consecutive heights across the network. It has no `config.toml` setting, and `0`
-(the default) disables it, leaving the behaviour above unchanged. When it is set,
+earliest start times of consecutive heights across the network. It has no
+`config.toml` setting, and `0` (the default) disables it, leaving the behaviour
+above unchanged. When it is set,
 a node starts height `H+1` at
 
 `max(now, CommitTime(H) + timeout_commit, Anchor(H) + dynamic_timeout_commit)`, with
@@ -588,7 +589,7 @@ which is how a lagging node catches up without waiting at every height.
 The floor runs from the earlier of the node's own start and the proposer's
 timestamp, at most `dynamic_timeout_commit/2` earlier per height, so a node that
 started a height late (after catch-up or a restart) returns to the proposer's
-schedule within a height or two, while a later timestamp is ignored. The floor
+schedule by up to half a floor per height, while a later timestamp is ignored. The floor
 thus holds for the earliest start of each height; a pulled node's own
 start-to-start interval can be shorter. An honest proposer whose clock is behind
 pulls the schedule earlier each time it proposes, by at most that skew and
