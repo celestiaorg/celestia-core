@@ -559,13 +559,18 @@ Here's a brief summary of the timeouts:
 `timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
 timeout behave as described above. The application can also return
 `dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
-start times of consecutive heights. It has no `config.toml` setting, and `0`
-(the default) disables it, leaving the behaviour above unchanged. When it is set,
+earliest start times of consecutive heights across the network, except while
+the schedule catches up with a node that reset ahead of it (see below). It has no
+`config.toml` setting, and `0` (the default) disables it, leaving the behaviour
+above unchanged. When it is set,
 a node starts height `H+1` at
 
-`max(now, CommitTime(H) + timeout_commit, StartTime(H) + dynamic_timeout_commit)`
+`max(now, CommitTime(H) + timeout_commit, Anchor(H) + dynamic_timeout_commit)`, with
+`Anchor(H) = min(StartTime(H), max(ProposalTime(H), StartTime(H) - dynamic_timeout_commit/2))`,
 
-where `StartTime(H)` is when the node started height `H` on its own clock. A node
+where `StartTime(H)` is when the node started height `H` on its own clock and
+`ProposalTime(H)` is the timestamp the proposer signed into the committed proposal
+of `H` (ignored when the node did not receive that proposal, and in WAL replay). A node
 with no start on that schedule keeps `max(now, CommitTime(H) + timeout_commit)`
 for one height and paces from there: on the first height after start-up, when `H`
 was committed before its `StartTime` (it fell behind, or its clock stepped back),
@@ -582,9 +587,27 @@ replay is never held); `skip_timeout_commit` is ignored while
 height start round 0 at once, and a node commits on a +2/3 majority from any step,
 which is how a lagging node catches up without waiting at every height.
 
-The floor is per node, start to start on its own clock: nodes that started a
-height at different times keep that offset, so the network-wide interval is
-`dynamic_timeout_commit` on average, not at every height. With a short
+The floor runs from the earlier of the node's own start and the proposer's
+timestamp, at most `dynamic_timeout_commit/2` earlier per height, so a node that
+started a height late (after catch-up or a restart) returns to the proposer's
+schedule by up to half a floor per height, while a later timestamp is ignored. The floor
+thus holds for the earliest start of each height between resets; a pulled node's
+own start-to-start interval can be shorter. Let the slack be
+`dynamic_timeout_commit` minus the start-to-commit time minus `timeout_commit`.
+A node whose legacy start lands ahead of the schedule (restart, catch-up exit,
+backward clock step, legacy pacing) moves the network earlier by that lead (at
+most the slack), in steps of at most `dynamic_timeout_commit/2` at its next turns
+as proposer, then the schedule holds again. A validator whose clock is behind
+pulls nothing while it keeps its earlier schedule; once it re-anchors on its own
+commit (restart, backward step past its commit, legacy pacing) it shortens one
+interval at each of its turns as proposer, by at most
+`min(dynamic_timeout_commit/2, slack)`, so with stake share `f` it lowers the
+mean interval by at most `f * min(dynamic_timeout_commit/2, slack)`, the same
+bound as backdating.
+Timestamps never move a start later. Proposers with stake share `f` that
+backdate their proposals shorten the mean interval by at most
+`f * dynamic_timeout_commit/2`, and a node never starts before
+`max(now, CommitTime(H) + timeout_commit)`. With a short
 `timeout_commit`, a validator whose precommit arrives after the next proposal is
 built may be absent from its `LastCommit`. Applications that move pacing to the
 dynamic floor return a short `timeout_commit` (celestia-app v11: 100ms, a window
