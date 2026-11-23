@@ -160,3 +160,23 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 			"Config should not contain mempool type field")
 	}
 }
+
+// A config.toml written before the blockstore memtable keys existed parses to their defaults.
+func TestBlockstoreMemtableDefaultsForOldConfig(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, config.RenderConfig(&buf, config.DefaultConfig()))
+	var old []string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if !strings.HasPrefix(line, "blockstore_memtable_size_mb") && !strings.HasPrefix(line, "blockstore_goleveldb_") {
+			old = append(old, line)
+		}
+	}
+	values := viper.New()
+	values.SetConfigType("toml")
+	require.NoError(t, values.ReadConfig(strings.NewReader(strings.Join(old, "\n"))))
+	require.False(t, values.IsSet("storage.blockstore_memtable_size_mb"))
+	cfg := config.DefaultConfig()
+	require.NoError(t, values.Unmarshal(cfg))
+	require.Equal(t, 64, cfg.Storage.BlockstoreMemtableSizeMB)
+	require.True(t, cfg.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction)
+}

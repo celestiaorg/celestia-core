@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""File a Linear issue for each fuzz target listed in FUZZ_LOG_DIR/failed.txt.
+"""File a Linear issue for each failing target listed in LOG_DIR/failed.txt.
 
 Fuzz output and crashing inputs may describe an exploitable bug, so the nightly
 job keeps them out of public logs and this script sends them only to Linear.
+The E2E and deadlock nightlies use it the same way, with a target per group.
 An open issue with the same title gets a comment instead of a duplicate.
 
-Environment: LINEAR_API_KEY, LINEAR_TEAM_KEY, LINEAR_ASSIGNEE_ID, FUZZ_LOG_DIR,
-RUN_URL, COMMIT_SHA, and optionally TITLE_PREFIX.
+Environment: LINEAR_API_KEY, LINEAR_TEAM_KEY, LINEAR_ASSIGNEE_ID, LOG_DIR (or
+FUZZ_LOG_DIR), RUN_URL, COMMIT_SHA, and optionally TITLE_PREFIX, and for
+nightlies other than fuzz, KIND (what failed, e.g. "E2E testnet group") and
+REPRODUCE (how to reproduce it).
 
-FUZZ_LOG_DIR/failed.txt holds one "<priority> <package> <target>" line per
-failing target, and FUZZ_LOG_DIR/<target>.log holds that target's output.
+LOG_DIR/failed.txt holds one "<priority> <package> <target>" line per failing
+target, and LOG_DIR/<target>.log holds that target's output. A log longer than
+the excerpt in the issue is also attached in full, compressed.
 Adapted from celestia-app's .github/scripts/report-fuzz-failures.py.
 """
+import gzip
 import json
 import os
 import pathlib
@@ -24,6 +29,7 @@ API = "https://api.linear.app/graphql"
 PRIORITIES = {"1": 1, "2": 2, "3": 3}
 MAX_LOG_CHARS = 20000
 MAX_INPUT_CHARS = 8000
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def graphql(query, variables):
@@ -58,7 +64,7 @@ def crashing_input(pkg, log):
         return None, None
 
 
-def upload(name, data):
+def upload(name, data, content_type="text/plain"):
     """Uploads data to Linear's private file storage and returns its URL.
 
     The issue keeps the complete corpus file, since the runner workspace is
@@ -70,9 +76,9 @@ def upload(name, data):
             uploadFile { uploadUrl assetUrl headers { key value } }
           }
         }""",
-        {"contentType": "text/plain", "filename": name, "size": len(data)},
+        {"contentType": content_type, "filename": name, "size": len(data)},
     )["fileUpload"]["uploadFile"]
-    headers = {"Content-Type": "text/plain", "Cache-Control": "public, max-age=31536000"}
+    headers = {"Content-Type": content_type, "Cache-Control": "public, max-age=31536000"}
     headers.update({h["key"]: h["value"] for h in upload_file["headers"]})
     request = urllib.request.Request(upload_file["uploadUrl"], data=data, headers=headers, method="PUT")
     with urllib.request.urlopen(request, timeout=60):
@@ -81,17 +87,20 @@ def upload(name, data):
 
 
 def describe(pkg, target, log):
+    reproduce = os.environ.get("REPRODUCE") or (
+        "Reproduce by saving the complete corpus file below as "
+        f"`{pkg}/testdata/fuzz/{target}/<name>` and running "
+        f"`go test -run='^{target}$' {pkg}`."
+    )
     lines = [
-        f"Nightly fuzz target `{target}` in `{pkg}` failed.",
+        f"Nightly {os.environ.get('KIND', 'fuzz target')} `{target}` in `{pkg}` failed.",
         "",
         f"- Run: {os.environ['RUN_URL']}",
         f"- Commit: `{os.environ['COMMIT_SHA']}`",
         "",
-        "Reproduce by saving the complete corpus file below as "
-        f"`{pkg}/testdata/fuzz/{target}/<name>` and running "
-        f"`go test -run='^{target}$' {pkg}`.",
+        reproduce,
         "",
-        "Keep crash details out of public PRs and issues; see test/fuzz/README.md.",
+        "Keep failure details out of public PRs and issues; see test/fuzz/README.md.",
     ]
     name, crash = crashing_input(pkg, log)
     if crash is not None:
@@ -105,20 +114,32 @@ def describe(pkg, target, log):
             lines.append(f"Excerpt: first {MAX_INPUT_CHARS} of {len(text)} characters, not a valid corpus file on its own.")
             text = text[:MAX_INPUT_CHARS]
         lines += ["", fence(text)]
-    lines += ["", "## Output (tail)", "", fence(log[-MAX_LOG_CHARS:])]
+    lines += ["", "## Output (tail)", ""]
+    if len(log) > MAX_LOG_CHARS:
+        data = gzip.compress(log.encode())
+        if len(data) > MAX_UPLOAD_BYTES:
+            lines.append(f"The complete output is {len(data)} bytes compressed, too large to attach.")
+        else:
+            try:
+                url = upload(f"{target}.log.gz", data, "application/gzip")
+                lines.append(f"Complete output: [{target}.log.gz]({url})")
+            except Exception as err:  # Still file the issue; say what is missing.
+                lines.append(f"Uploading the complete output failed ({err}).")
+        lines.append("")
+    lines.append(fence(log[-MAX_LOG_CHARS:]))
     return "\n".join(lines)
 
 
 def main():
-    log_dir = pathlib.Path(os.environ["FUZZ_LOG_DIR"])
+    log_dir = pathlib.Path(os.environ.get("LOG_DIR") or os.environ["FUZZ_LOG_DIR"])
     failed_file = log_dir / "failed.txt"
-    # A step other than a fuzz target failed, e.g. setup or the registry check.
+    # A step other than a target failed, e.g. setup or the registry check.
     if not failed_file.exists():
-        print("No failing fuzz targets recorded.")
+        print("No failing targets recorded.")
         return
     failed = [line for line in failed_file.read_text().split("\n") if line.strip()]
     if not failed:
-        print("No failing fuzz targets recorded.")
+        print("No failing targets recorded.")
         return
     if not os.environ.get("LINEAR_API_KEY"):
         sys.exit("LINEAR_API_KEY is not set; cannot file the Linear issue.")

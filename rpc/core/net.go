@@ -113,11 +113,13 @@ func (env *Environment) GenesisChunked(_ *rpctypes.Context, chunk uint) (*ctypes
 		return nil, fmt.Errorf("service configuration error, there are no chunks")
 	}
 
-	id := int(chunk)
-
-	if id > len(env.genChunks)-1 {
-		return nil, fmt.Errorf("there are %d chunks, %d is invalid", len(env.genChunks)-1, id)
+	// Compare as unsigned before converting. A chunk above math.MaxInt would
+	// otherwise wrap to a negative index.
+	if chunk >= uint(len(env.genChunks)) {
+		return nil, fmt.Errorf("there are %d chunks, %d is invalid", len(env.genChunks)-1, chunk)
 	}
+
+	id := int(chunk)
 
 	return &ctypes.ResultGenesisChunk{
 		TotalChunks: len(env.genChunks),

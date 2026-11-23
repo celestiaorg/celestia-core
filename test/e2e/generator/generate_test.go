@@ -68,3 +68,24 @@ func TestVersionFinder(t *testing.T) {
 		assert.Equal(t, tc.expectedLatest, actualLatest)
 	}
 }
+
+// TestGeneratorNetemPerturbations tests that random testnets include the
+// latency and partition perturbations.
+func TestGeneratorNetemPerturbations(t *testing.T) {
+	cfg := &generateConfig{
+		randSource: rand.New(rand.NewSource(randomSeed)),
+	}
+	manifests, err := Generate(cfg)
+	require.NoError(t, err)
+
+	found := map[string]bool{}
+	for _, m := range manifests {
+		for _, node := range m.Nodes {
+			for _, p := range node.Perturb {
+				found[p] = true
+			}
+		}
+	}
+	assert.True(t, found[string(e2e.PerturbationLatency)], "no node has the latency perturbation")
+	assert.True(t, found[string(e2e.PerturbationPartition)], "no node has the partition perturbation")
+}

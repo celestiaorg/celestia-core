@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
@@ -78,6 +79,7 @@ func attackerSecretConn(c io.ReadWriteCloser, ephPub, ephPriv, victimEphPub *[32
 	}
 	return &SecretConnection{
 		conn:            c,
+		connWriter:      bufio.NewWriterSize(c, defaultWriteBufferSize),
 		recvNonce:       new([aeadNonceSize]byte),
 		sendNonce:       new([aeadNonceSize]byte),
 		recvAead:        recvAead,
@@ -332,11 +334,11 @@ func FuzzSecretConnectionRead(f *testing.F) {
 					data[i] = byte(i) ^ op
 				}
 				var buf bytes.Buffer
-				attacker.conn = &writerCloser{&buf}
+				attacker.connWriter.Reset(&buf)
 				if _, err := attacker.Write(data); err != nil {
 					t.Fatal(err)
 				}
-				attacker.conn = attackerConn
+				attacker.connWriter.Reset(attackerConn)
 				if buf.Len() > 0 {
 					stream = append(stream, buf.Bytes())
 				}
@@ -440,11 +442,6 @@ func FuzzSecretConnectionRead(f *testing.F) {
 		}
 	})
 }
-
-type writerCloser struct{ io.Writer }
-
-func (writerCloser) Read([]byte) (int, error) { return 0, io.EOF }
-func (writerCloser) Close() error             { return nil }
 
 // halfPipe is a net.Conn made of two io.Pipes so each side can close its
 // write direction independently (net.Pipe cannot half-close).
