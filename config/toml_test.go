@@ -160,3 +160,21 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 			"Config should not contain mempool type field")
 	}
 }
+
+func TestBlockSyncPipelineConfig(t *testing.T) {
+	require.True(t, config.DefaultConfig().BlockSync.Pipeline)
+
+	cfg := config.DefaultConfig()
+	cfg.BlockSync.Pipeline = false
+	var buf bytes.Buffer
+	require.NoError(t, config.RenderConfig(&buf, cfg))
+	require.Contains(t, buf.String(), "pipeline = false")
+
+	// A config file written before the field existed keeps the default (on).
+	v := viper.New()
+	v.SetConfigType("toml")
+	require.NoError(t, v.ReadConfig(strings.NewReader(strings.Replace(buf.String(), "pipeline = false\n", "", 1))))
+	out := config.DefaultConfig()
+	require.NoError(t, v.Unmarshal(out))
+	require.True(t, out.BlockSync.Pipeline)
+}

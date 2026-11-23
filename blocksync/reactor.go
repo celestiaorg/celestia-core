@@ -48,6 +48,13 @@ type consensusReactor interface {
 // ReactorOption defines a function argument for Reactor.
 type ReactorOption func(*Reactor)
 
+// ReactorPipeline enables preparing the next block while the current one is applied.
+func ReactorPipeline(enabled bool) ReactorOption {
+	return func(bcR *Reactor) {
+		bcR.pipeline = enabled
+	}
+}
+
 // ReactorVerifyData sets the verifyData field of the reactor.
 func ReactorVerifyData(verifyData bool) ReactorOption {
 	return func(bcR *Reactor) {
@@ -86,6 +93,11 @@ type Reactor struct {
 	switchToConsensusMs int
 
 	metrics *Metrics
+
+	// pipeline prepares the next block while the current one is applied
+	// (see pipeline.go).
+	pipeline      bool
+	pipelineStats pipelineStats
 }
 
 // NewReactor returns new reactor instance.
@@ -140,6 +152,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 		traceClient:  traceClient,
+		pipeline:     true,
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -398,6 +411,14 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 
 	didProcessCh := make(chan struct{}, 1)
 
+	// Speculative work for the next block, see pipeline.go.
+	var pendingSpec *blockSpec
+	defer func() {
+		if pendingSpec != nil {
+			<-pendingSpec.done
+		}
+	}()
+
 	initialCommitHasExtensions := (bcR.initialState.LastBlockHeight > 0 && bcR.store.LoadBlockExtendedCommit(bcR.initialState.LastBlockHeight) != nil)
 
 	go func() {
@@ -536,22 +557,53 @@ FOR_LOOP:
 			// Try again quickly next loop.
 			didProcessCh <- struct{}{}
 
-			firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
-			if err != nil {
-				bcR.Logger.Error("failed to make ",
-					"height", first.Height,
-					"err", err.Error())
-				break FOR_LOOP
+			// Take the speculative result computed while the previous block
+			// was applied (if any).
+			spec := pendingSpec
+			pendingSpec = nil
+			if spec != nil {
+				<-spec.done
 			}
-			firstPartSetHeader := firstParts.Header()
-			firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+
+			var (
+				firstParts *types.PartSet
+				firstID    types.BlockID
+				err        error
+			)
+			if specParts, specID, ok := spec.partsFor(first); ok {
+				firstParts, firstID = specParts, specID
+				bcR.pipelineStats.partsUsed.Add(1)
+			} else {
+				if spec != nil {
+					bcR.pipelineStats.partsDiscarded.Add(1)
+				}
+				firstParts, err = first.MakePartSet(types.BlockPartSizeBytes)
+				if err != nil {
+					bcR.Logger.Error("failed to make ",
+						"height", first.Height,
+						"err", err.Error())
+					break FOR_LOOP
+				}
+				firstPartSetHeader := firstParts.Header()
+				firstID = types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+			}
 
 			// Start timing validation
 			validationStart := time.Now()
 
 			// Fully verify second.LastCommit to ensure all signatures are valid.
-			err = state.Validators.VerifyCommit(
-				chainID, firstID, first.Height, second.LastCommit)
+			if spec.commitCheck(first, second, state.Validators, &bcR.pipelineStats) {
+				// Already fully verified (success only) against an identical
+				// validator set for exactly these block objects.
+				bcR.pipelineStats.commitUsed.Add(1)
+				err = nil
+			} else {
+				if spec != nil {
+					bcR.pipelineStats.commitMissed.Add(1)
+				}
+				err = state.Validators.VerifyCommit(
+					chainID, firstID, first.Height, second.LastCommit)
+			}
 
 			if err == nil {
 				// Validate the block before we persist it.
@@ -630,6 +682,15 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
+			// Prepare block H+1 while H is applied below.
+			// Validators(H+1) == NextValidators before applying H.
+			if bcR.pipeline && canSpeculate(second) {
+				if nextFirst, nextSecond, _ := bcR.pool.PeekTwoBlocks(); nextFirst == second {
+					pendingSpec = startBlockSpec(chainID, second, nextSecond, state.NextValidators.Copy())
+					bcR.pipelineStats.started.Add(1)
+				}
+			}
+
 			// Start timing block save
 			saveStart := time.Now()
 
@@ -670,6 +731,14 @@ FOR_LOOP:
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
+				if bcR.pipeline {
+					ps := &bcR.pipelineStats
+					bcR.Logger.Debug("Blocksync pipeline stats",
+						"started", ps.started.Load(), "parts_used", ps.partsUsed.Load(),
+						"commit_used", ps.commitUsed.Load(), "commit_missed", ps.commitMissed.Load(),
+						"miss_no_next", ps.missNoNext.Load(), "miss_block_changed", ps.missBlockChanged.Load(),
+						"miss_spec_failed", ps.missSpecFailed.Load(), "miss_vals_mismatch", ps.missValsMismatch.Load())
+				}
 				lastHundred = time.Now()
 			}
 
