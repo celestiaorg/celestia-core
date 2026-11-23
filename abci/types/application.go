@@ -1,6 +1,8 @@
 package types
 
 import (
+	"fmt"
+
 	context "golang.org/x/net/context"
 )
 
@@ -117,6 +119,9 @@ func NewGRPCApplication(app Application) *GRPCApplication {
 }
 
 func (app *GRPCApplication) Echo(ctx context.Context, req *RequestEcho) (*ResponseEcho, error) {
+	if req.Message == DeliverTxBatchProbe {
+		return &ResponseEcho{Message: DeliverTxBatchProbeAck}, nil
+	}
 	return &ResponseEcho{Message: req.Message}, nil
 }
 
@@ -134,9 +139,36 @@ func (app *GRPCApplication) SetOption(ctx context.Context, req *RequestSetOption
 	return &res, nil
 }
 
+// DeliverTx executes a batch of txs (see EncodeDeliverTxBatch) when the call
+// carries the DeliverTxBatchMetadataKey metadata. Otherwise the payload is
+// passed to Application.DeliverTx unchanged.
 func (app *GRPCApplication) DeliverTx(ctx context.Context, req *RequestDeliverTx) (*ResponseDeliverTx, error) {
+	if isDeliverTxBatchCall(ctx) {
+		txs, ok := DecodeDeliverTxBatch(req.Tx)
+		if !ok {
+			return nil, fmt.Errorf("malformed DeliverTx batch")
+		}
+		return app.deliverTxBatch(txs)
+	}
 	res := app.app.DeliverTx(*req)
 	return &res, nil
+}
+
+// deliverTxBatch executes txs in order in a single round trip. Each tx gets
+// exactly the response a separate DeliverTx call would return.
+func (app *GRPCApplication) deliverTxBatch(txs [][]byte) (*ResponseDeliverTx, error) {
+	if p, ok := app.app.(interface{ PrepareDeliverTxBatch([][]byte) }); ok {
+		p.PrepareDeliverTxBatch(txs)
+	}
+	resps := make([]ResponseDeliverTx, len(txs))
+	for i, tx := range txs {
+		resps[i] = app.app.DeliverTx(RequestDeliverTx{Tx: tx})
+	}
+	data, err := EncodeDeliverTxBatchResponse(resps)
+	if err != nil {
+		return nil, err
+	}
+	return &ResponseDeliverTx{Data: data, Info: DeliverTxBatchMagic}, nil
 }
 
 func (app *GRPCApplication) CheckTx(ctx context.Context, req *RequestCheckTx) (*ResponseCheckTx, error) {
