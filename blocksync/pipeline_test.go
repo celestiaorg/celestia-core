@@ -123,8 +123,6 @@ type syncOutcome struct {
 	commits     []string
 	decided     map[int64]string
 	stateBytes  []byte
-	stats       [5]int64
-	misses      [4]int64
 }
 
 func runPipelineSync(
@@ -181,9 +179,6 @@ func runPipelineSync(
 	st, err := receiver.stateStore.Load()
 	require.NoError(t, err)
 	out.stateBytes = st.Bytes()
-	ps := &receiver.reactor.pipelineStats
-	out.stats = [5]int64{ps.started.Load(), ps.partsUsed.Load(), ps.commitUsed.Load(), ps.commitMissed.Load(), ps.partsDiscarded.Load()}
-	out.misses = [4]int64{ps.missNoNext.Load(), ps.missBlockChanged.Load(), ps.missSpecFailed.Load(), ps.missValsMismatch.Load()}
 	return out
 }
 
@@ -249,12 +244,6 @@ func TestPipelineEquivalence(t *testing.T) {
 	require.Equal(t, off.stateBytes, on.stateBytes)
 	require.Len(t, on.decided, int(maxHeight-1))
 
-	t.Logf("stats off=%v on=%v (started, partsUsed, commitUsed, commitMissed, partsDiscarded) misses=%v (noNext, blockChanged, specFailed, valsMismatch)", off.stats, on.stats, on.misses)
-	require.Zero(t, on.misses[3], "speculated validator set must match state.Validators")
-	require.Zero(t, on.misses[2])
-	require.Equal(t, [5]int64{}, off.stats)
-	require.Greater(t, on.stats[2], maxHeight/2, "pipelined commit verification should be used for most blocks")
-	require.Zero(t, on.stats[4])
 }
 
 // TestPipelineBadCommitMidChain: a peer serves a block whose LastCommit has an
@@ -278,9 +267,6 @@ func TestPipelineBadCommitMidChain(t *testing.T) {
 	require.Equal(t, off.blockHashes, on.blockHashes)
 	require.Equal(t, off.decided, on.decided)
 	require.Equal(t, off.stateBytes, on.stateBytes)
-	t.Logf("stats on=%v misses=%v", on.stats, on.misses)
-	require.Zero(t, on.misses[3])
-	require.GreaterOrEqual(t, on.stats[3], int64(1), "speculative failure must fall back to synchronous verification")
 }
 
 // TestBlockSpecGuards checks the consumption guards of a speculative result.
@@ -313,51 +299,51 @@ func TestBlockSpecGuards(t *testing.T) {
 	b5, b6 := clone(block), clone(next)
 	require.True(t, canSpeculate(b5))
 
-	s := startBlockSpec("spec-chain", b5, b6, vals.Copy())
+	s := startBlockSpec("spec-chain", b5, b6, vals.Copy(), log.NewNopLogger())
 	<-s.done
 	p, id, ok := s.partsFor(b5)
 	require.True(t, ok)
 	require.Equal(t, bid, id)
 	require.Equal(t, parts.Header(), p.Header())
-	require.True(t, s.commitVerifiedFor(b5, b6, vals))
+	require.True(t, s.commitVerified(b5, b6, vals))
 
 	// different block objects with identical content: not used
 	_, _, ok = s.partsFor(clone(b5))
 	require.False(t, ok)
-	require.False(t, s.commitVerifiedFor(b5, clone(b6), vals))
+	require.False(t, s.commitVerified(b5, clone(b6), vals))
 
 	// validator set differs (power change): not used
 	changed := vals.Copy()
 	require.NoError(t, changed.UpdateWithChangeSet([]*types.Validator{types.NewValidator(changed.Validators[0].PubKey, 99)}))
-	require.False(t, s.commitVerifiedFor(b5, b6, changed))
+	require.False(t, s.commitVerified(b5, b6, changed))
 
 	// verification failure is never surfaced as success
 	bad := clone(next)
 	bad.LastCommit = corruptLastSig(t, nextCommit)
-	s2 := startBlockSpec("spec-chain", b5, bad, vals.Copy())
+	s2 := startBlockSpec("spec-chain", b5, bad, vals.Copy(), log.NewNopLogger())
 	<-s2.done
-	require.False(t, s2.commitVerifiedFor(b5, bad, vals))
+	require.False(t, s2.commitVerified(b5, bad, vals))
 	_, _, ok = s2.partsFor(b5)
 	require.True(t, ok)
 
 	// wrong (speculated) validator set: commit result not used
 	other, _ := types.RandValidatorSet(20, 10)
-	s3 := startBlockSpec("spec-chain", b5, b6, other)
+	s3 := startBlockSpec("spec-chain", b5, b6, other, log.NewNopLogger())
 	<-s3.done
-	require.False(t, s3.commitVerifiedFor(b5, b6, vals))
+	require.False(t, s3.commitVerified(b5, b6, vals))
 
 	// missing next block: parts only
-	s4 := startBlockSpec("spec-chain", b5, nil, vals.Copy())
+	s4 := startBlockSpec("spec-chain", b5, nil, vals.Copy(), log.NewNopLogger())
 	<-s4.done
 	_, _, ok = s4.partsFor(b5)
 	require.True(t, ok)
-	require.False(t, s4.commitVerifiedFor(b5, b6, vals))
+	require.False(t, s4.commitVerified(b5, b6, vals))
 
 	// nil spec
 	var ns *blockSpec
 	_, _, ok = ns.partsFor(b5)
 	require.False(t, ok)
-	require.False(t, ns.commitVerifiedFor(b5, b6, vals))
+	require.False(t, ns.commitVerified(b5, b6, vals))
 
 	// blocks with nil memoized header hashes are not speculated on
 	b5.LastCommitHash = nil

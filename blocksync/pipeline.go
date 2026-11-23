@@ -2,8 +2,8 @@ package blocksync
 
 import (
 	"bytes"
-	"sync/atomic"
 
+	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -11,20 +11,6 @@ import (
 // block ID, and the verification of its commit (carried in H+2) against
 // Validators(H+1). Results are used only for the same block objects and an
 // identical validator set, and only on success; otherwise the stock code runs.
-
-// pipelineStats counts speculative outcomes (diagnostics/tests).
-type pipelineStats struct {
-	started        atomic.Int64
-	partsUsed      atomic.Int64
-	commitUsed     atomic.Int64
-	commitMissed   atomic.Int64
-	partsDiscarded atomic.Int64
-	// breakdown of commitMissed
-	missNoNext       atomic.Int64 // H+2 was not available when speculating
-	missBlockChanged atomic.Int64 // pool returned different block objects
-	missSpecFailed   atomic.Int64 // speculative verification did not succeed
-	missValsMismatch atomic.Int64 // speculated validator set != state.Validators
-}
 
 type blockSpec struct {
 	block *types.Block // H+1
@@ -48,29 +34,38 @@ func canSpeculate(b *types.Block) bool {
 		b.LastCommitHash != nil && b.DataHash != nil && b.EvidenceHash != nil
 }
 
+// blockPartsAndID returns the part set and block ID of b.
+func blockPartsAndID(b *types.Block) (*types.PartSet, types.BlockID, error) {
+	parts, err := b.MakePartSet(types.BlockPartSizeBytes)
+	if err != nil {
+		return nil, types.BlockID{}, err
+	}
+	return parts, types.BlockID{Hash: b.Hash(), PartSetHeader: parts.Header()}, nil
+}
+
 // startBlockSpec launches the speculative computation for block (H+1) using
 // next (H+2, may be nil) and vals, which must be a private copy owned by the
 // spec goroutine.
-func startBlockSpec(chainID string, block, next *types.Block, vals *types.ValidatorSet) *blockSpec {
+func startBlockSpec(chainID string, block, next *types.Block, vals *types.ValidatorSet, logger log.Logger) *blockSpec {
 	s := &blockSpec{block: block, next: next, vals: vals, done: make(chan struct{})}
-	go s.run(chainID)
+	go s.run(chainID, logger)
 	return s
 }
 
-func (s *blockSpec) run(chainID string) {
+func (s *blockSpec) run(chainID string, logger log.Logger) {
 	defer close(s.done)
 	defer func() {
+		// A panic here only discards the speculation; the stock code then
+		// processes the block on the main goroutine.
 		if r := recover(); r != nil {
-			s.partsOK = false
-			s.commitOK = false
+			logger.Error("blocksync pipeline panicked", "height", s.block.Height, "err", r)
+			s.partsOK, s.commitOK = false, false
 		}
 	}()
-	parts, err := s.block.MakePartSet(types.BlockPartSizeBytes)
-	if err != nil || parts == nil {
+	var err error
+	if s.parts, s.blockID, err = blockPartsAndID(s.block); err != nil {
 		return
 	}
-	s.parts = parts
-	s.blockID = types.BlockID{Hash: s.block.Hash(), PartSetHeader: parts.Header()}
 	s.partsOK = true
 
 	if s.next == nil || s.vals == nil {
@@ -89,50 +84,10 @@ func (s *blockSpec) partsFor(first *types.Block) (*types.PartSet, types.BlockID,
 	return s.parts, s.blockID, true
 }
 
-// commitVerifiedFor reports whether second.LastCommit was successfully
-// verified for first against a validator set identical to vals.
-func (s *blockSpec) commitVerifiedFor(first, second *types.Block, vals *types.ValidatorSet) bool {
-	return s.commitCheck(first, second, vals, nil)
-}
-
-func (s *blockSpec) commitCheck(first, second *types.Block, vals *types.ValidatorSet, st *pipelineStats) bool {
-	if st == nil {
-		st = &pipelineStats{} // discard counters
-	}
-	miss := func(c *atomic.Int64) bool {
-		c.Add(1)
-		return false
-	}
-	switch {
-	case s == nil:
-		return false
-	case s.next == nil:
-		return miss(&st.missNoNext)
-	case s.block != first || s.next != second:
-		return miss(&st.missBlockChanged)
-	case !s.partsOK || !s.commitOK:
-		return miss(&st.missSpecFailed)
-	case !sameValidatorSet(s.vals, s.valsHash, vals):
-		return miss(&st.missValsMismatch)
-	}
-	return true
-}
-
-// sameValidatorSet checks that two validator sets agree on everything
-// VerifyCommit reads: size, order, address, pubkey and voting power (and
-// hence total power and key types), plus Hash() equality.
-func sameValidatorSet(spec *types.ValidatorSet, specHash []byte, cur *types.ValidatorSet) bool {
-	if spec == nil || cur == nil || len(spec.Validators) != len(cur.Validators) {
-		return false
-	}
-	for i, a := range spec.Validators {
-		b := cur.Validators[i]
-		if a == nil || b == nil || a.PubKey == nil || b.PubKey == nil {
-			return false
-		}
-		if !bytes.Equal(a.Address, b.Address) || a.VotingPower != b.VotingPower || !a.PubKey.Equals(b.PubKey) {
-			return false
-		}
-	}
-	return len(specHash) > 0 && bytes.Equal(specHash, cur.Hash())
+// commitVerified reports whether second.LastCommit was successfully verified
+// for first against a validator set with the same hash as vals.
+func (s *blockSpec) commitVerified(first, second *types.Block, vals *types.ValidatorSet) bool {
+	return s != nil && s.next != nil && s.block == first && s.next == second &&
+		s.partsOK && s.commitOK && vals != nil &&
+		len(s.valsHash) > 0 && bytes.Equal(s.valsHash, vals.Hash())
 }
