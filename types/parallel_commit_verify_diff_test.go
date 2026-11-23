@@ -251,3 +251,65 @@ func TestParallelCommitVerify_RandomDifferential(t *testing.T) {
 	t.Logf("parallel path accepted %d commits", parAccepted)
 	require.Positive(t, parAccepted, "the parallel path must actually be exercised")
 }
+
+// TestParallelCommitVerify_BoundedWork checks that the parallel pass cannot
+// be made to do more signature work than the validator set size: it never runs
+// for the by-address (trusting) paths, where a commit may carry far more
+// signatures than the trusted set, and for the by-index paths it handles at
+// most one signature per validator, like the stock batch.
+func TestParallelCommitVerify_BoundedWork(t *testing.T) {
+	prev := SetParallelCommitVerify(true)
+	defer SetParallelCommitVerify(prev)
+	rng := rand.New(rand.NewSource(7))
+	vals, privs := diffValidators(rng, 100)
+	blockID := diffBlockID(rng)
+	commit := diffCommit(t, rng, vals, privs, blockID, 5)
+
+	// ~19k signatures all naming validator 0, with garbage signatures.
+	victim := vals.Validators[0].Address
+	adv := &Commit{Height: 5, Round: 1, BlockID: blockID, Signatures: make([]CommitSig, 19000)}
+	for i := range adv.Signatures {
+		sig := make([]byte, 64)
+		rng.Read(sig)
+		adv.Signatures[i] = CommitSig{
+			BlockIDFlag: BlockIDFlagCommit, ValidatorAddress: victim,
+			Timestamp: time.Unix(1700000000, 0).UTC(), Signature: sig,
+		}
+	}
+	trust := cmtmath.Fraction{Numerator: 1, Denominator: 3}
+	for name, fn := range map[string]func() error{
+		"VerifyCommitLightTrusting": func() error { return VerifyCommitLightTrusting(pcvChainID, vals, adv, trust) },
+		"VerifyCommitLightTrustingAllSignatures": func() error {
+			return VerifyCommitLightTrustingAllSignatures(pcvChainID, vals, adv, trust)
+		},
+		"VerifyCommit":                   func() error { return vals.VerifyCommit(pcvChainID, blockID, 5, adv) },
+		"VerifyCommitLightAllSignatures": func() error { return VerifyCommitLightAllSignatures(pcvChainID, vals, blockID, 5, adv) },
+	} {
+		SetParallelCommitVerify(false)
+		want := diffRun(fn)
+		SetParallelCommitVerify(true)
+		before := parallelCommitVerifySigs.Load()
+		got := diffRun(fn)
+		require.Equal(t, want, got, name)
+		require.Zero(t, parallelCommitVerifySigs.Load()-before, "%s: parallel pass must not run", name)
+	}
+
+	// All signatures garbage on a by-index commit: the parallel pass handles
+	// each validator's signature at most once before falling back.
+	bad := *commit
+	bad.Signatures = append([]CommitSig(nil), commit.Signatures...)
+	for i := range bad.Signatures {
+		if bad.Signatures[i].BlockIDFlag != BlockIDFlagAbsent {
+			s := make([]byte, 64)
+			rng.Read(s)
+			bad.Signatures[i].Signature = s
+		}
+	}
+	SetParallelCommitVerify(false)
+	want := diffRun(func() error { return vals.VerifyCommit(pcvChainID, blockID, 5, &bad) })
+	SetParallelCommitVerify(true)
+	before := parallelCommitVerifySigs.Load()
+	got := diffRun(func() error { return vals.VerifyCommit(pcvChainID, blockID, 5, &bad) })
+	require.Equal(t, want, got)
+	require.LessOrEqual(t, parallelCommitVerifySigs.Load()-before, int64(vals.Size()))
+}

@@ -23,6 +23,9 @@ var parallelCommitVerify atomic.Bool
 // parallelCommitVerifyAccepted counts commits accepted by the parallel pass.
 var parallelCommitVerifyAccepted atomic.Int64
 
+// parallelCommitVerifySigs counts signatures handed to the parallel pass.
+var parallelCommitVerifySigs atomic.Int64
+
 func init() { parallelCommitVerify.Store(true) }
 
 // SetParallelCommitVerify enables or disables parallel commit verification
@@ -83,8 +86,9 @@ func tryParallelVerifyCommitBatch(
 	proposerKey := vals.GetProposer().PubKey
 
 	var (
-		wg     sync.WaitGroup
-		failed = make(chan struct{}, (len(idxs)+chunk-1)/chunk)
+		wg      sync.WaitGroup
+		aborted atomic.Bool
+		failed  = make(chan struct{}, (len(idxs)+chunk-1)/chunk)
 	)
 	for start := 0; start < len(idxs); start += chunk {
 		end := start + chunk
@@ -101,19 +105,24 @@ func tryParallelVerifyCommitBatch(
 					ok = false
 				}
 				if !ok {
+					aborted.Store(true)
 					failed <- struct{}{}
 				}
 			}()
 			bv, supported := batch.CreateBatchVerifier(proposerKey)
-			if !supported {
+			if !supported || aborted.Load() {
 				return
 			}
+			parallelCommitVerifySigs.Add(int64(len(part)))
 			for _, idx := range part {
 				val := vals.Validators[idx]
 				signBytes := commit.VoteSignBytes(chainID, int32(idx))
 				if err := bv.Add(val.PubKey, signBytes, commit.Signatures[idx].Signature); err != nil {
 					return
 				}
+			}
+			if aborted.Load() { // another chunk failed; the result is already "not accepted"
+				return
 			}
 			ok, _ = bv.Verify()
 		}(part)
