@@ -89,142 +89,102 @@ func TestPacingCompleteProposalWaitsForHeightStart(t *testing.T) {
 	}
 }
 
-func TestPacingAnchorsOnEarlierOfLocalStartAndProposalAcrossClockOffsets(t *testing.T) {
-	base := time.Now().Add(time.Hour)
-	for _, offset := range []time.Duration{-2 * time.Second, 0, 2 * time.Second} {
-		t.Run(offset.String(), func(t *testing.T) {
-			localStart := base.Add(offset)
-			cs, vss := pacedState(t, localStart)
-			// Every validator commits the same proposal; only a timestamp before the local start pulls.
-			propTs := base.Add(300 * time.Millisecond)
-			commit := localStart.Add(400 * time.Millisecond)
-
-			pacingCommitProposal(t, cs, vss, commit, propTs)
-
-			anchor := localStart
-			if propTs.Before(localStart) {
-				anchor = propTs
-			}
-			require.Equal(t, pacingLatest(commit.Add(cs.state.Timeouts.TimeoutCommit), anchor.Add(testDynamicTimeoutCommit)),
-				cs.rs.StartTime, "the interval runs from the earlier of the local start and the proposal timestamp")
-		})
-	}
-}
-
-func TestPacingProposalAfterOwnStartKeepsOwnDeadline(t *testing.T) {
+func TestPacingAnchorsOnEarlierOfOwnStartAndCappedProposal(t *testing.T) {
+	const ms = time.Millisecond
 	start := time.Now().Add(time.Hour)
-	for name, propTs := range map[string]time.Duration{
-		"own proposal":     5 * time.Millisecond,
-		"on grid":          300 * time.Millisecond,
-		"same instant":     0,
-		"after own floor":  2 * time.Second,
-		"after the commit": 450 * time.Millisecond,
+	// Offsets from the own start; D = 1s, so a pull is capped at 500 ms and legacy = commit + 100 ms.
+	for name, tc := range map[string]struct{ propTs, commit, want time.Duration }{
+		"own proposal":                     {propTs: 5 * ms, commit: 400 * ms, want: time.Second},
+		"same instant":                     {propTs: 0, commit: 400 * ms, want: time.Second},
+		"proposer started later":           {propTs: 300 * ms, commit: 400 * ms, want: time.Second},
+		"stamped after the commit":         {propTs: 450 * ms, commit: 400 * ms, want: time.Second},
+		"stamped after own floor":          {propTs: 2 * time.Second, commit: 400 * ms, want: time.Second},
+		"1ns earlier":                      {propTs: -time.Nanosecond, commit: 400 * ms, want: time.Second - time.Nanosecond},
+		"proposer clock 50ms behind":       {propTs: -40 * ms, commit: 400 * ms, want: 960 * ms},
+		"proposer clock 300ms behind":      {propTs: -290 * ms, commit: 400 * ms, want: 710 * ms},
+		"pull bounded by legacy start":     {propTs: -290 * ms, commit: 750 * ms, want: 850 * ms},
+		"proposer clock 2s behind: capped": {propTs: -1990 * ms, commit: 200 * ms, want: 500 * ms},
+		"backdated 10s: capped":            {propTs: -10 * time.Second, commit: 200 * ms, want: 500 * ms},
+		"backdated 10s: legacy start wins": {propTs: -10 * time.Second, commit: 450 * ms, want: 550 * ms},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cs, vss := pacedState(t, start)
 			m := recordPacingMetrics(cs)
 
-			pacingCommitProposal(t, cs, vss, start.Add(400*time.Millisecond), start.Add(propTs))
+			pacingCommitProposal(t, cs, vss, start.Add(tc.commit), start.Add(tc.propTs))
 
-			require.Equal(t, start.Add(testDynamicTimeoutCommit), cs.rs.StartTime,
-				"a proposal stamped at or after the local start must not move the deadline")
-			m.requireCounts(t, 0, 0, 0, 1)
+			require.Equal(t, tc.want, cs.rs.StartTime.Sub(start))
+			var pulls float64
+			if tc.propTs < 0 {
+				pulls = 1
+			}
+			m.requireCounts(t, pulls, 0, 0, 1)
 		})
 	}
 }
 
 func TestPacingLaggingNodeReturnsToProposerGrid(t *testing.T) {
-	const prepare = 10 * time.Millisecond
-	grid := time.Now().Add(time.Hour)
-	// The node started 540 ms after the grid, e.g. after catching up.
-	cs, vss := pacedState(t, grid.Add(540*time.Millisecond))
-	m := recordPacingMetrics(cs)
-
-	for h := 0; h < 3; h++ {
-		gridStart := grid.Add(time.Duration(h) * testDynamicTimeoutCommit)
-		pacingCommitProposal(t, cs, vss, gridStart.Add(600*time.Millisecond), gridStart.Add(prepare))
-
-		require.Equal(t, gridStart.Add(testDynamicTimeoutCommit+prepare), cs.rs.StartTime,
-			"height %d: the node must start one floor after the proposer's timestamp", h)
-		m.requireCounts(t, 1, 0, 0, h+1)
-	}
-}
-
-func TestPacingProposalOnlyMovesDeadlineEarlier(t *testing.T) {
-	start := time.Now().Add(time.Hour)
-	commit := start.Add(400 * time.Millisecond)
-	for _, offset := range []time.Duration{
-		-2 * time.Second, -500 * time.Millisecond, -time.Nanosecond, 0, time.Nanosecond, 500 * time.Millisecond, 2 * time.Second,
+	const ms = time.Millisecond
+	const prepare = 10 * ms
+	// Own-start offsets from the grid after each height: a pull moves at most D/2 = 500 ms.
+	for lag, offsets := range map[time.Duration][]time.Duration{
+		300 * ms: {prepare, prepare, prepare},
+		540 * ms: {40 * ms, prepare, prepare},
+		800 * ms: {300 * ms, prepare, prepare},
 	} {
-		t.Run(offset.String(), func(t *testing.T) {
-			cs, vss := pacedState(t, start)
+		t.Run(lag.String(), func(t *testing.T) {
+			grid := time.Now().Add(time.Hour)
+			// The node started lag after the grid, e.g. after catching up.
+			cs, vss := pacedState(t, grid.Add(lag))
 			m := recordPacingMetrics(cs)
-			propTs := start.Add(offset)
+			offset, pulls := lag, 0.0
+			for h, want := range offsets {
+				gridStart := grid.Add(time.Duration(h) * testDynamicTimeoutCommit)
+				pacingCommitProposal(t, cs, vss, gridStart.Add(900*ms), gridStart.Add(prepare))
+				if offset > prepare {
+					pulls++
+				}
+				offset = want
 
-			pacingCommitProposal(t, cs, vss, commit, propTs)
-
-			legacy := commit.Add(cs.state.Timeouts.TimeoutCommit)
-			own := start.Add(testDynamicTimeoutCommit)
-			require.False(t, cs.rs.StartTime.After(own), "never later than the own-start deadline")
-			pulled := offset < 0
-			if pulled {
-				require.Equal(t, pacingLatest(legacy, propTs.Add(testDynamicTimeoutCommit)), cs.rs.StartTime)
-				m.requireCounts(t, 1, 0, 0, 1)
-			} else {
-				require.Equal(t, own, cs.rs.StartTime)
-				m.requireCounts(t, 0, 0, 0, 1)
+				require.Equal(t, gridStart.Add(testDynamicTimeoutCommit+want), cs.rs.StartTime,
+					"height %d: the node must start one floor after the proposer's timestamp", h)
+				m.requireCounts(t, pulls, 0, 0, h+1)
 			}
 		})
 	}
 }
 
-func TestPacingBackdatedProposalFallsBackToLegacyStart(t *testing.T) {
-	t.Run("legacy start ahead", func(t *testing.T) {
-		start := time.Now().Add(time.Hour)
-		cs, vss := pacedState(t, start)
-		m := recordPacingMetrics(cs)
-		commit := start.Add(400 * time.Millisecond)
+func TestPacingPulledDeadlineInPastStartsNow(t *testing.T) {
+	// The own floor would still hold for 300 ms, but the capped and legacy deadlines have passed.
+	start := time.Now().Add(-700 * time.Millisecond)
+	cs, vss := pacedState(t, start)
+	m := recordPacingMetrics(cs)
+	before := time.Now()
 
-		pacingCommitProposal(t, cs, vss, commit, start.Add(-10*time.Second))
+	pacingCommitProposal(t, cs, vss, start.Add(200*time.Millisecond), start.Add(-10*time.Second))
 
-		require.Equal(t, commit.Add(cs.state.Timeouts.TimeoutCommit), cs.rs.StartTime,
-			"a backdated proposal can bring the start back to the legacy one, not before")
-		m.requireCounts(t, 1, 0, 0, 1)
-	})
-	t.Run("legacy start past", func(t *testing.T) {
-		// The own floor would still hold for 500 ms, but the legacy start has passed.
-		start := time.Now().Add(-500 * time.Millisecond)
-		cs, vss := pacedState(t, start)
-		m := recordPacingMetrics(cs)
-		before := time.Now()
-
-		pacingCommitProposal(t, cs, vss, start.Add(200*time.Millisecond), start.Add(-10*time.Second))
-
-		require.False(t, cs.rs.StartTime.Before(before))
-		require.False(t, cs.rs.StartTime.After(time.Now()), "the start must be now, not the backdated deadline")
-		m.requireCounts(t, 1, 1, 0, 1)
-	})
+	require.False(t, cs.rs.StartTime.Before(before))
+	require.False(t, cs.rs.StartTime.After(time.Now()), "the start must be now, not a past deadline")
+	m.requireCounts(t, 1, 1, 0, 1)
 }
 
 func TestPacingNoPullWithoutCommittedProposal(t *testing.T) {
 	start := time.Now().Add(time.Hour)
 	commit := start.Add(400 * time.Millisecond)
 	propTs := start.Add(-300 * time.Millisecond)
-	for name, commitHeight := range map[string]func(*State, []*validatorStub){
-		"no proposal": func(cs *State, vss []*validatorStub) {
+	for name, commitHeight := range map[string]func(*testing.T, *State, []*validatorStub){
+		"no proposal": func(t *testing.T, cs *State, vss []*validatorStub) {
 			pacingCommitHeight(t, cs, vss, 0, commit)
 		},
-		"other block": func(cs *State, vss []*validatorStub) {
+		"other block": func(t *testing.T, cs *State, vss []*validatorStub) {
 			cs.rs.Proposal = pacingProposal(cs, pacingRandBlockID(), propTs)
 			pacingCommitHeight(t, cs, vss, 0, commit)
 		},
-		"zero block IDs": func(cs *State, vss []*validatorStub) {
+		"zero block IDs": func(t *testing.T, cs *State, vss []*validatorStub) {
 			cs.rs.Proposal = pacingProposal(cs, types.BlockID{}, propTs)
-			pacingAddPrecommitQuorum(t, cs, vss, 0)
-			cs.rs.CommitRound, cs.rs.CommitTime = 0, commit
-			cs.updateToState(pacingNextState(cs))
+			pacingCommitBlock(t, cs, vss, 0, commit, types.BlockID{})
 		},
-		"replay": func(cs *State, vss []*validatorStub) {
+		"replay": func(t *testing.T, cs *State, vss []*validatorStub) {
 			cs.replayMode = true
 			pacingCommitProposal(t, cs, vss, commit, propTs)
 		},
@@ -233,7 +193,7 @@ func TestPacingNoPullWithoutCommittedProposal(t *testing.T) {
 			cs, vss := pacedState(t, start)
 			m := recordPacingMetrics(cs)
 
-			commitHeight(cs, vss)
+			commitHeight(t, cs, vss)
 
 			require.Equal(t, start.Add(testDynamicTimeoutCommit), cs.rs.StartTime,
 				"only the committed proposal's timestamp, outside replay, may move the deadline")
@@ -248,45 +208,24 @@ func TestPacingNoPullWithoutCommittedProposal(t *testing.T) {
 
 func TestPacingBootstrapIgnoresProposalTimestamp(t *testing.T) {
 	commit := time.Now().Add(time.Hour)
+	// Both timestamps are before the own start, so a paced height would pull.
 	for name, tc := range map[string]struct {
-		start         time.Duration
+		start, propTs time.Duration
 		pacingStarted bool
 	}{
-		"first commit after restart": {start: -5 * time.Second},
-		"commit before own start":    {start: 200 * time.Millisecond, pacingStarted: true},
+		"first commit after restart": {start: -5 * time.Second, propTs: -5300 * time.Millisecond},
+		"commit before own start":    {start: 200 * time.Millisecond, propTs: -300 * time.Millisecond, pacingStarted: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cs, vss := pacedState(t, commit.Add(tc.start))
 			cs.pacingStarted = tc.pacingStarted
 			m := recordPacingMetrics(cs)
 
-			// Anchored on this timestamp the deadline would be commit + 700 ms.
-			pacingCommitProposal(t, cs, vss, commit, commit.Add(-300*time.Millisecond))
+			pacingCommitProposal(t, cs, vss, commit, commit.Add(tc.propTs))
 
 			require.Equal(t, commit.Add(cs.state.Timeouts.TimeoutCommit), cs.rs.StartTime,
 				"a bootstrap height keeps the legacy start whatever the proposal timestamp")
 			m.requireCounts(t, 0, 0, 1, 0)
-		})
-	}
-}
-
-func TestPacingProposerClockSkewBoundedByLegacyStart(t *testing.T) {
-	const prepare = 10 * time.Millisecond
-	start := time.Now().Add(time.Hour)
-	commit := start.Add(400 * time.Millisecond)
-	for _, skew := range []time.Duration{5 * time.Millisecond, 50 * time.Millisecond, 300 * time.Millisecond, 2 * time.Second} {
-		t.Run(skew.String(), func(t *testing.T) {
-			// The proposer started with the node, its clock skew behind.
-			cs, vss := pacedState(t, start)
-
-			pacingCommitProposal(t, cs, vss, commit, start.Add(prepare-skew))
-
-			own := start.Add(testDynamicTimeoutCommit)
-			legacy := commit.Add(cs.state.Timeouts.TimeoutCommit)
-			wantErr := max(skew-prepare, 0)
-			wantErr = min(wantErr, own.Sub(legacy))
-			require.Equal(t, wantErr, own.Sub(cs.rs.StartTime),
-				"the start moves earlier by the proposer's skew less Prepare, bounded by the legacy start")
 		})
 	}
 }
@@ -555,13 +494,6 @@ func pacingCommitProposal(t *testing.T, cs *State, vss []*validatorStub, commit,
 	blockID := pacingRandBlockID()
 	cs.rs.Proposal = pacingProposal(cs, blockID, propTs)
 	pacingCommitBlock(t, cs, vss, 0, commit, blockID)
-}
-
-func pacingLatest(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
 }
 
 // countingHistogram counts observations.

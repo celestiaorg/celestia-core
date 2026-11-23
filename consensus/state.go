@@ -1020,8 +1020,8 @@ func (cs *State) updateToState(state sm.State) {
 }
 
 // applyDynamicTimeoutCommit raises StartTime to dynamic after the earlier of the previous start
-// and the committed proposal's timestamp, so a lagging node returns to the proposer's grid.
-// It never leaves StartTime in the past. 0 is a no-op.
+// and the committed proposal's timestamp (at most dynamic/2 earlier), so a lagging node returns
+// to the proposer's grid. It never leaves StartTime in the past. 0 is a no-op.
 func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, lastBlockID types.BlockID, dynamic time.Duration) {
 	if dynamic <= 0 {
 		cs.pacingStarted = false
@@ -1037,7 +1037,12 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, lastBlockID 
 	pulled := p != nil && !cs.replayMode && !p.BlockID.IsZero() &&
 		p.BlockID.Equals(lastBlockID) && p.Timestamp.Before(prevStartTime)
 	if pulled {
+		// A proposal pulls the deadline at most half a floor earlier per height,
+		// bounding what a backdated timestamp can shave.
 		anchor = p.Timestamp
+		if limit := prevStartTime.Add(-dynamic / 2); anchor.Before(limit) {
+			anchor = limit
+		}
 	}
 	if deadline := anchor.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
 		cs.rs.StartTime = deadline

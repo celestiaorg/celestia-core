@@ -559,11 +559,12 @@ Here's a brief summary of the timeouts:
 `timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
 timeout behave as described above. The application can also return
 `dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
-start times of consecutive heights. It has no `config.toml` setting, and `0`
+earliest start times of consecutive heights across the network. It has no `config.toml` setting, and `0`
 (the default) disables it, leaving the behaviour above unchanged. When it is set,
 a node starts height `H+1` at
 
-`max(now, CommitTime(H) + timeout_commit, min(StartTime(H), ProposalTime(H)) + dynamic_timeout_commit)`
+`max(now, CommitTime(H) + timeout_commit, Anchor(H) + dynamic_timeout_commit)`, with
+`Anchor(H) = min(StartTime(H), max(ProposalTime(H), StartTime(H) - dynamic_timeout_commit/2))`,
 
 where `StartTime(H)` is when the node started height `H` on its own clock and
 `ProposalTime(H)` is the timestamp the proposer signed into the committed proposal
@@ -585,11 +586,16 @@ height start round 0 at once, and a node commits on a +2/3 majority from any ste
 which is how a lagging node catches up without waiting at every height.
 
 The floor runs from the earlier of the node's own start and the proposer's
-timestamp, so a node that started a height late (after catch-up or a restart)
-returns to the proposer's schedule in one height, while a later timestamp is
-ignored. Clock skew between a node and the proposer moves its start earlier by at
-most that skew, never later, and a backdated timestamp brings the next start no
-earlier than `max(now, CommitTime(H) + timeout_commit)`. With a short
+timestamp, at most `dynamic_timeout_commit/2` earlier per height, so a node that
+started a height late (after catch-up or a restart) returns to the proposer's
+schedule within a height or two, while a later timestamp is ignored. The floor
+thus holds for the earliest start of each height; a pulled node's own
+start-to-start interval can be shorter. An honest proposer whose clock is behind
+pulls the schedule earlier each time it proposes, by at most that skew and
+`dynamic_timeout_commit/2`, never later. Proposers with stake share `f` that
+backdate their proposals shorten the mean interval by at most
+`f * dynamic_timeout_commit/2`, and a node never starts before
+`max(now, CommitTime(H) + timeout_commit)`. With a short
 `timeout_commit`, a validator whose precommit arrives after the next proposal is
 built may be absent from its `LastCommit`. Applications that move pacing to the
 dynamic floor return a short `timeout_commit` (celestia-app v11: 100ms, a window
