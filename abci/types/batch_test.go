@@ -177,3 +177,21 @@ func TestGRPCEchoBatchProbe(t *testing.T) {
 		t.Fatalf("plain echo changed: %v %+v", err, res)
 	}
 }
+
+// TestDecodeDeliverTxBatchCapacity checks that each decoded tx's capacity ends
+// at its own length, so appending to one tx cannot overwrite the next.
+func TestDecodeDeliverTxBatchCapacity(t *testing.T) {
+	txs, ok := DecodeDeliverTxBatch(EncodeDeliverTxBatch([][]byte{{1, 2}, {3, 4}}))
+	if !ok || len(txs) != 2 {
+		t.Fatalf("bad decode %v %v", ok, txs)
+	}
+	for i, tx := range txs {
+		if cap(tx) != len(tx) {
+			t.Fatalf("tx %d has cap %d > len %d", i, cap(tx), len(tx))
+		}
+	}
+	_ = append(txs[0], 0xff)
+	if txs[1][0] != 3 {
+		t.Fatal("appending to tx 0 overwrote tx 1")
+	}
+}

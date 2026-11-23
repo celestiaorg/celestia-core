@@ -37,7 +37,9 @@ func isDeliverTxBatchCall(ctx context.Context) bool {
 // DeliverTxBatchMetadataKey.
 const DeliverTxBatchMagic = "\xffCELESTIA-DELIVERTX-BATCH-V1"
 
-// EncodeDeliverTxBatch packs txs into a single DeliverTx payload.
+// EncodeDeliverTxBatch packs txs into a single DeliverTx payload. It is the
+// reference encoder for clients (the multiplexer has its own copy) and is
+// used by tests.
 func EncodeDeliverTxBatch(txs [][]byte) []byte {
 	n := len(DeliverTxBatchMagic)
 	for _, tx := range txs {
@@ -66,7 +68,7 @@ func DecodeDeliverTxBatch(b []byte) ([][]byte, bool) {
 		if k <= 0 || uint64(len(b)-k) < l {
 			return nil, false
 		}
-		txs = append(txs, b[k:k+int(l)])
+		txs = append(txs, b[k:k+int(l):k+int(l)])
 		b = b[k+int(l):]
 	}
 	return txs, true
@@ -89,6 +91,7 @@ func EncodeDeliverTxBatchResponse(resps []ResponseDeliverTx) ([]byte, error) {
 }
 
 // DecodeDeliverTxBatchResponse is the inverse of EncodeDeliverTxBatchResponse.
+// It is the reference decoder for clients and is used by tests.
 func DecodeDeliverTxBatchResponse(b []byte) ([]ResponseDeliverTx, error) {
 	var out []ResponseDeliverTx
 	for len(b) > 0 {
