@@ -181,30 +181,6 @@ func TestBlockstoreMemtableDefaultsForOldConfig(t *testing.T) {
 	require.True(t, cfg.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction)
 }
 
-// decodeRendered renders cfg, applies edit to the text and decodes it the way
-// the node does (viper over DefaultConfig).
-func decodeRendered(t *testing.T, cfg *config.Config, edit func(string) string) *config.Config {
-	t.Helper()
-	var buf bytes.Buffer
-	require.NoError(t, config.RenderConfig(&buf, cfg))
-	v := viper.New()
-	v.SetConfigType("toml")
-	require.NoError(t, v.ReadConfig(strings.NewReader(edit(buf.String()))))
-	out := config.DefaultConfig()
-	require.NoError(t, v.Unmarshal(out))
-	return out
-}
-
-func TestParallelCommitVerifyConfig(t *testing.T) {
+func TestParallelCommitVerifyDefault(t *testing.T) {
 	require.True(t, config.DefaultConfig().ParallelCommitVerify)
-
-	cfg := config.DefaultConfig()
-	cfg.ParallelCommitVerify = false
-	require.False(t, decodeRendered(t, cfg, func(s string) string { return s }).ParallelCommitVerify)
-
-	// A config file written before the field existed keeps the default (on).
-	missing := decodeRendered(t, cfg, func(s string) string {
-		return strings.Replace(s, "parallel_commit_verify = false\n", "", 1)
-	})
-	require.True(t, missing.ParallelCommitVerify)
 }

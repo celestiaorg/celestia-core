@@ -241,7 +241,6 @@ func verifyCommitBatch(
 	// below runs and returns the same error as without the parallel pass.
 	if parallelCommitVerify.Load() && countAllSignatures && lookUpByIndex &&
 		tryParallelVerifyCommitBatch(chainID, vals, commit, votingPowerNeeded, ignoreSig, countSig) {
-		parallelCommitVerifyAccepted.Add(1)
 		return nil
 	}
 
