@@ -746,6 +746,20 @@ func newUnstartedFlushTestMConnection(conn net.Conn, flushLowLatency time.Durati
 }
 
 // requireNoRead asserts nothing reaches the socket within a short window.
+// readUntil reads from server until want has arrived and returns what was read.
+func readUntil(t *testing.T, server net.Conn, want string) []byte {
+	t.Helper()
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(2*time.Second)))
+	var got []byte
+	for !bytes.Contains(got, []byte(want)) {
+		buf := make([]byte, 1024)
+		n, err := server.Read(buf)
+		require.NoError(t, err)
+		got = append(got, buf[:n]...)
+	}
+	return got
+}
+
 func requireNoRead(t *testing.T, server net.Conn, msg string) {
 	t.Helper()
 	require.NoError(t, server.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
@@ -787,14 +801,7 @@ func TestMConnectionFlushLowLatencyCoalesces(t *testing.T) {
 	time.Sleep(20 * time.Millisecond) // vote1's queue has drained by now
 	require.True(t, mconn.Send(0x01, []byte("vote2")))
 
-	require.NoError(t, server.SetReadDeadline(time.Now().Add(2*time.Second)))
-	var got []byte
-	for !bytes.Contains(got, []byte("vote2")) {
-		buf := make([]byte, 1024)
-		n, err := server.Read(buf)
-		require.NoError(t, err)
-		got = append(got, buf[:n]...)
-	}
+	readUntil(t, server, "vote2")
 	require.EqualValues(t, 1, conn.writes.Load(), "messages sent within flush_low_latency should share one write")
 }
 
@@ -850,7 +857,7 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 	}
 	queueVotes := func(c *MConnection, n int) {
 		for i := 0; i < n; i++ {
-			require.True(t, c.channelsIdx[0x01].sendBytes([]byte("vote")))
+			require.True(t, c.channelsIdx[0x01].sendBytes([]byte("vote"), false))
 		}
 	}
 
@@ -884,7 +891,7 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		c, _ := newConn(t)
 		queueVotes(c, 2)
 		for i := 0; i < numBatchPacketMsgs; i++ {
-			require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+			require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx"), false))
 		}
 		require.False(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
 		require.True(t, armed(c))
@@ -894,7 +901,7 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		c, conn := newConn(t)
 		c.lowLatencyPending = true
 		c.flush() // e.g. the flush timer
-		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx"), false))
 		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
 		require.False(t, armed(c))
 		require.Zero(t, conn.writes)
@@ -912,9 +919,64 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 
 	t.Run("bulk only batch is not flushed", func(t *testing.T) {
 		c, conn := newConn(t)
-		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx"), false))
 		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
 		require.False(t, armed(c))
 		require.Zero(t, conn.writes)
 	})
+
+	t.Run("lazy alone leaves with the flush throttle", func(t *testing.T) {
+		c, conn := newConn(t)
+		c.flushTimer.Stop()
+		c.flushTimer = timer.NewThrottleTimer("flush", 50*time.Millisecond)
+		require.True(t, c.channelsIdx[0x01].sendBytes([]byte("hasvote"), true))
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.False(t, armed(c))
+		require.Zero(t, conn.writes)
+		select {
+		case <-c.flushTimer.Ch:
+		case <-time.After(time.Second):
+			t.Fatal("the flush throttle never fired")
+		}
+	})
+
+	for name, lazyFirst := range map[string]bool{"lazy ahead of a vote shares its flush": true, "lazy behind a vote shares its flush": false} {
+		t.Run(name, func(t *testing.T) {
+			c, conn := newConn(t)
+			queueLazy := func() { require.True(t, c.channelsIdx[0x01].sendBytes([]byte("hasvote"), true)) }
+			if lazyFirst {
+				queueLazy()
+			}
+			queueVotes(c, 1)
+			if !lazyFirst {
+				queueLazy()
+			}
+			require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+			require.True(t, armed(c))
+			require.Zero(t, conn.writes)
+		})
+	}
+
+	t.Run("a queued lazy message doesn't hold back the flush", func(t *testing.T) {
+		c, _ := newConn(t)
+		queueVotes(c, 1)
+		require.True(t, c.channelsIdx[0x01].sendBytes([]byte("hasvote"), true))
+		// write only the vote: the lazy message left at the head must not delay arming
+		require.False(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), 1))
+		require.True(t, armed(c))
+	})
+}
+
+func TestMConnectionSendLazyEndToEnd(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	mconn := newFlushTestMConnection(t, client, 5*time.Millisecond)
+	require.True(t, mconn.SendLazy(0x01, []byte("hasvote")))
+	requireNoRead(t, server, "a lazy message alone waits for the flush throttle")
+
+	require.True(t, mconn.TrySend(0x01, []byte("ballot")))
+	got := readUntil(t, server, "ballot")
+	require.True(t, bytes.Contains(got, []byte("hasvote")), "the lazy message leaves with the vote's flush")
 }

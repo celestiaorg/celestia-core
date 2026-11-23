@@ -5,6 +5,7 @@ import (
 	"fmt"
 	golog "log"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -100,6 +101,34 @@ func TestPeerSend(t *testing.T) {
 
 	assert.True(p.CanSend(testCh))
 	assert.True(p.Send(Envelope{ChannelID: testCh, Message: &p2p.Message{}}))
+}
+
+func TestPeerSendLazy(t *testing.T) {
+	server, client := net.Pipe()
+	t.Cleanup(func() { server.Close(); client.Close() })
+
+	mConfig := cmtconn.DefaultMConnConfig()
+	mConfig.FlushThrottle = time.Hour
+	mConfig.PingInterval = time.Hour
+	mConfig.FlushLowLatency = time.Millisecond
+	chDescs := []*cmtconn.ChannelDescriptor{{ID: testCh, Priority: 1, LowLatency: true}}
+	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor("TestReactor", chDescs, true)}
+	nodeInfo := testNodeInfo(PubKeyToID(ed25519.GenPrivKey().PubKey()), "remote")
+	p := newPeer(newPeerConn(true, false, client, nil), mConfig, nodeInfo, reactorsByCh, nil, chDescs,
+		func(Peer, interface{}, string) {}, newMetricsLabelCache())
+	p.SetLogger(log.TestingLogger())
+	require.NoError(t, p.Start())
+	t.Cleanup(func() { _ = p.Stop() })
+
+	require.True(t, p.Send(Envelope{ChannelID: testCh, Message: &p2p.Message{}, Lazy: true}))
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+	_, err := server.Read(make([]byte, 64))
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded, "a lazy message alone waits for the flush throttle")
+
+	require.True(t, p.Send(Envelope{ChannelID: testCh, Message: &p2p.Message{}}))
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(time.Second)))
+	_, err = server.Read(make([]byte, 64))
+	require.NoError(t, err)
 }
 
 func createOutboundPeerAndPerformHandshake(
