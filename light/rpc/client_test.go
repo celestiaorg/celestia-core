@@ -133,6 +133,17 @@ func (n nextBlockClient) BlockByHash(_ context.Context, _ []byte) (*ctypes.Resul
 	}, nil
 }
 
+func (n nextBlockClient) Block(_ context.Context, _ *int64) (*ctypes.ResultBlock, error) {
+	return &ctypes.ResultBlock{
+		BlockID: types.BlockID{Hash: n.block.Hash()},
+		Block:   n.block,
+	}, nil
+}
+
+func (n nextBlockClient) BlockResults(_ context.Context, _ *int64) (*ctypes.ResultBlockResults, error) {
+	return &ctypes.ResultBlockResults{Height: n.block.Height}, nil
+}
+
 func (n nextBlockClient) HeaderByHash(_ context.Context, _ cmtbytes.HexBytes) (*ctypes.ResultHeader, error) {
 	return &ctypes.ResultHeader{Header: &n.block.Header}, nil
 }
@@ -160,6 +171,34 @@ func TestBlockByHashRejectsMismatchedHash(t *testing.T) {
 	_, err := c.BlockByHash(context.Background(), requestedHash)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match requested hash")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// A malicious upstream can answer a Block request with a genuine block from a
+// different height. The response must be rejected on the height mismatch
+// before any light-client verification runs.
+func TestBlockRejectsMismatchedHeight(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHeight := int64(100)
+	_, err := c.Block(context.Background(), &requestedHeight)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested height")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// A malicious upstream can label the results of one block with the height of
+// another. The response must be rejected on the height mismatch before any
+// light-client verification runs.
+func TestBlockResultsRejectsMismatchedHeight(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHeight := int64(100)
+	_, err := c.BlockResults(context.Background(), &requestedHeight)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested height")
 	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
 }
 
