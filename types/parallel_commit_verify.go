@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/batch"
 )
 
@@ -52,29 +53,8 @@ func tryParallelVerifyCommitBatch(
 		}
 	}()
 
-	n := len(commit.Signatures)
-	if n < parallelCommitVerifyMinSigs || len(vals.Validators) != n {
-		return false
-	}
-
-	// Sequential cheap pre-pass mirroring the checks of verifyCommitBatch
-	// (lookUpByIndex=true) except the signature work.
-	idxs := make([]int, 0, n)
-	var tallied int64
-	for idx, commitSig := range commit.Signatures {
-		if ignoreSig(commitSig) {
-			continue
-		}
-		val := vals.Validators[idx]
-		if !bytes.Equal(val.Address, commitSig.ValidatorAddress) {
-			return false
-		}
-		idxs = append(idxs, idx)
-		if countSig(commitSig) {
-			tallied += val.VotingPower
-		}
-	}
-	if tallied <= votingPowerNeeded || len(idxs) == 0 {
+	idxs, ok := parallelCommitPrePass(vals, commit, votingPowerNeeded, ignoreSig, countSig)
+	if !ok {
 		return false
 	}
 
@@ -86,51 +66,83 @@ func tryParallelVerifyCommitBatch(
 	proposerKey := vals.GetProposer().PubKey
 
 	var (
-		wg      sync.WaitGroup
-		aborted atomic.Bool
-		failed  = make(chan struct{}, (len(idxs)+chunk-1)/chunk)
+		wg     sync.WaitGroup
+		failed atomic.Bool
 	)
 	for start := 0; start < len(idxs); start += chunk {
-		end := start + chunk
-		if end > len(idxs) {
-			end = len(idxs)
-		}
-		part := idxs[start:end]
+		part := idxs[start:min(start+chunk, len(idxs))]
 		wg.Add(1)
-		go func(part []int) {
+		go func() {
 			defer wg.Done()
-			ok := false
-			defer func() {
-				if r := recover(); r != nil {
-					ok = false
-				}
-				if !ok {
-					aborted.Store(true)
-					failed <- struct{}{}
-				}
-			}()
-			bv, supported := batch.CreateBatchVerifier(proposerKey)
-			if !supported || aborted.Load() {
-				return
+			if !verifyCommitChunk(chainID, vals, commit, proposerKey, part, &failed) {
+				failed.Store(true)
 			}
-			parallelCommitVerifySigs.Add(int64(len(part)))
-			for _, idx := range part {
-				val := vals.Validators[idx]
-				signBytes := commit.VoteSignBytes(chainID, int32(idx))
-				if err := bv.Add(val.PubKey, signBytes, commit.Signatures[idx].Signature); err != nil {
-					return
-				}
-			}
-			if aborted.Load() { // another chunk failed; the result is already "not accepted"
-				return
-			}
-			ok, _ = bv.Verify()
-		}(part)
+		}()
 	}
 	wg.Wait()
-	close(failed)
-	for range failed {
+	return !failed.Load()
+}
+
+// parallelCommitPrePass runs the non-signature checks of verifyCommitBatch
+// (by index) and returns the indices of the signatures to verify.
+func parallelCommitPrePass(
+	vals *ValidatorSet,
+	commit *Commit,
+	votingPowerNeeded int64,
+	ignoreSig func(CommitSig) bool,
+	countSig func(CommitSig) bool,
+) ([]int, bool) {
+	n := len(commit.Signatures)
+	if n < parallelCommitVerifyMinSigs || len(vals.Validators) != n {
+		return nil, false
+	}
+	idxs := make([]int, 0, n)
+	var tallied int64
+	for idx, commitSig := range commit.Signatures {
+		if ignoreSig(commitSig) {
+			continue
+		}
+		val := vals.Validators[idx]
+		if !bytes.Equal(val.Address, commitSig.ValidatorAddress) {
+			return nil, false
+		}
+		idxs = append(idxs, idx)
+		if countSig(commitSig) {
+			tallied += val.VotingPower
+		}
+	}
+	return idxs, tallied > votingPowerNeeded && len(idxs) > 0
+}
+
+// verifyCommitChunk batch-verifies the signatures at idxs. It stops early,
+// returning false, once another chunk has failed.
+func verifyCommitChunk(
+	chainID string,
+	vals *ValidatorSet,
+	commit *Commit,
+	proposerKey crypto.PubKey,
+	idxs []int,
+	failed *atomic.Bool,
+) (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			ok = false
+		}
+	}()
+	bv, supported := batch.CreateBatchVerifier(proposerKey)
+	if !supported || failed.Load() {
 		return false
 	}
-	return true
+	parallelCommitVerifySigs.Add(int64(len(idxs)))
+	for _, idx := range idxs {
+		signBytes := commit.VoteSignBytes(chainID, int32(idx))
+		if err := bv.Add(vals.Validators[idx].PubKey, signBytes, commit.Signatures[idx].Signature); err != nil {
+			return false
+		}
+	}
+	if failed.Load() {
+		return false
+	}
+	ok, _ = bv.Verify()
+	return ok
 }
