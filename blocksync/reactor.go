@@ -96,8 +96,7 @@ type Reactor struct {
 
 	// pipeline prepares the next block while the current one is applied
 	// (see pipeline.go).
-	pipeline      bool
-	pipelineStats pipelineStats
+	pipeline bool
 }
 
 // NewReactor returns new reactor instance.
@@ -569,42 +568,26 @@ FOR_LOOP:
 				<-spec.done
 			}
 
-			var (
-				firstParts *types.PartSet
-				firstID    types.BlockID
-				err        error
-			)
-			if specParts, specID, ok := spec.partsFor(first); ok {
-				firstParts, firstID = specParts, specID
-				bcR.pipelineStats.partsUsed.Add(1)
-			} else {
-				if spec != nil {
-					bcR.pipelineStats.partsDiscarded.Add(1)
-				}
-				firstParts, err = first.MakePartSet(types.BlockPartSizeBytes)
-				if err != nil {
+			firstParts, firstID, ok := spec.partsFor(first)
+			var err error
+			if !ok {
+				if firstParts, firstID, err = blockPartsAndID(first); err != nil {
 					bcR.Logger.Error("failed to make ",
 						"height", first.Height,
 						"err", err.Error())
 					break FOR_LOOP
 				}
-				firstPartSetHeader := firstParts.Header()
-				firstID = types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
 			}
 
 			// Start timing validation
 			validationStart := time.Now()
 
 			// Fully verify second.LastCommit to ensure all signatures are valid.
-			if spec.commitCheck(first, second, state.Validators, &bcR.pipelineStats) {
-				// Already fully verified (success only) against an identical
-				// validator set for exactly these block objects.
-				bcR.pipelineStats.commitUsed.Add(1)
+			if spec.commitVerified(first, second, state.Validators) {
+				// Already fully verified against an identical validator set
+				// for exactly these block objects.
 				err = nil
 			} else {
-				if spec != nil {
-					bcR.pipelineStats.commitMissed.Add(1)
-				}
 				err = state.Validators.VerifyCommit(
 					chainID, firstID, first.Height, second.LastCommit)
 			}
@@ -690,8 +673,7 @@ FOR_LOOP:
 			// Validators(H+1) == NextValidators before applying H.
 			if bcR.pipeline && canSpeculate(second) {
 				if nextFirst, nextSecond, _ := bcR.pool.PeekTwoBlocks(); nextFirst == second {
-					pendingSpec = startBlockSpec(chainID, second, nextSecond, state.NextValidators.Copy())
-					bcR.pipelineStats.started.Add(1)
+					pendingSpec = startBlockSpec(chainID, second, nextSecond, state.NextValidators.Copy(), bcR.Logger)
 				}
 			}
 
@@ -735,14 +717,6 @@ FOR_LOOP:
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
-				if bcR.pipeline {
-					ps := &bcR.pipelineStats
-					bcR.Logger.Debug("Blocksync pipeline stats",
-						"started", ps.started.Load(), "parts_used", ps.partsUsed.Load(),
-						"commit_used", ps.commitUsed.Load(), "commit_missed", ps.commitMissed.Load(),
-						"miss_no_next", ps.missNoNext.Load(), "miss_block_changed", ps.missBlockChanged.Load(),
-						"miss_spec_failed", ps.missSpecFailed.Load(), "miss_vals_mismatch", ps.missValsMismatch.Load())
-				}
 				lastHundred = time.Now()
 			}
 
