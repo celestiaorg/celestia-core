@@ -614,17 +614,28 @@ func (c *Client) UnsubscribeAll(ctx context.Context, subscriber string) error {
 }
 
 func (c *Client) updateLightClientIfNeededTo(ctx context.Context, height *int64) (*types.LightBlock, error) {
-	var (
-		l   *types.LightBlock
-		err error
-	)
-	if height == nil {
-		l, err = c.lc.Update(ctx, time.Now())
-	} else {
-		l, err = c.lc.VerifyLightBlockAtHeight(ctx, *height, time.Now())
+	if height != nil {
+		l, err := c.lc.VerifyLightBlockAtHeight(ctx, *height, time.Now())
+		if err != nil {
+			return nil, fmt.Errorf("failed to update light client to %d: %w", *height, err)
+		}
+		return l, nil
 	}
+
+	l, err := c.lc.Update(ctx, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("failed to update light client to %d: %w", *height, err)
+		return nil, fmt.Errorf("failed to update light client to the latest height: %w", err)
+	}
+	if l != nil {
+		return l, nil
+	}
+
+	// Update returns no light block when the primary has nothing newer than
+	// the latest trusted one, so serve the latest trusted light block.
+	const latestTrustedHeight = 0
+	l, err = c.lc.TrustedLightBlock(latestTrustedHeight)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the latest trusted light block: %w", err)
 	}
 	return l, nil
 }

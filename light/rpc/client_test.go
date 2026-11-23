@@ -2,12 +2,14 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/light/rpc/mocks"
@@ -255,4 +257,48 @@ func TestSubscribeWSStopsForwarding(t *testing.T) {
 			}, 5*time.Second, time.Millisecond)
 		})
 	}
+}
+
+// Update returns no light block and no error when the primary has nothing
+// newer than the latest trusted light block. Requests without a height must
+// then be served from the latest trusted light block instead of panicking.
+func TestNoHeightRequestsUseLatestTrustedLightBlock(t *testing.T) {
+	const latestTrustedHeight int64 = 0
+
+	trustedBlock := makeValidBlock(t, 5)
+	validator := types.NewValidator(ed25519.GenPrivKey().PubKey(), 10)
+	trusted := &types.LightBlock{
+		SignedHeader: &types.SignedHeader{Header: &trustedBlock.Header, Commit: &types.Commit{}},
+		ValidatorSet: types.NewValidatorSet([]*types.Validator{validator}),
+	}
+
+	lc := &mocks.LightClient{}
+	lc.On("Update", mock.Anything, mock.Anything).Return(nil, nil)
+	lc.On("TrustedLightBlock", latestTrustedHeight).Return(trusted, nil)
+	c := NewClient(nextBlockClient{}, lc)
+	ctx := context.Background()
+
+	commit, err := c.Commit(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, commit.Height)
+
+	header, err := c.Header(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, header.Header.Height)
+
+	validators, err := c.Validators(ctx, nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, validators.BlockHeight)
+	require.Equal(t, 1, validators.Total)
+}
+
+// A failed update for a request without a height must return an error
+// instead of dereferencing the nil height.
+func TestNoHeightRequestsReturnUpdateError(t *testing.T) {
+	lc := &mocks.LightClient{}
+	lc.On("Update", mock.Anything, mock.Anything).Return(nil, errors.New("primary unavailable"))
+	c := NewClient(nextBlockClient{}, lc)
+
+	_, err := c.Commit(context.Background(), nil)
+	require.ErrorContains(t, err, "primary unavailable")
 }
