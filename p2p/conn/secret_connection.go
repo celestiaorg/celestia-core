@@ -234,7 +234,7 @@ func (sc *SecretConnection) Write(data []byte) (n int, err error) {
 			n += len(chunk)
 			return nil
 		}(); err != nil {
-			return n, err
+			return 0, err
 		}
 	}
 	// Nothing counts as written until the buffered frames reach the conn.
