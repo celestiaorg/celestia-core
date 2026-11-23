@@ -1,7 +1,9 @@
 # We use Debian instead of Alpine for compatibility.
 FROM golang:1.26.11
 
-RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null
+# iproute2 provides tc for the latency and partition perturbations.
+RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null && \
+    apt-get -qq install -y --no-install-recommends iproute2 >/dev/null
 
 # Set up build directory /src/cometbft
 WORKDIR /src/cometbft

@@ -86,6 +86,23 @@ The generator generates this type of perturbation both on full nodes and on ligh
 Perturbations of type `upgrade` are a noop if the node's version matches the
 one in `upgrade_version`.
 
+## Network Perturbations
+
+The `latency` and `partition` perturbations use `tc netem` on every network
+interface of the node, for 20 seconds each, and then remove it:
+
+* `latency` delays the node's outgoing packets by 200ms with 50ms of jitter.
+* `partition` drops all of the node's outgoing packets, which isolates it from
+  its peers without closing its connections.
+
+`tc` runs in a short-lived container from the `cometbft/e2e-node:local-version`
+image, with the `NET_ADMIN` capability, that shares the node's network
+namespace. So these perturbations also work on nodes that run other versions,
+but the local image must be built. The Docker host's kernel must have the
+`sch_netem` module. On Ubuntu, run `sudo modprobe sch_netem`, and if that fails,
+install `linux-modules-extra-$(uname -r)` first.
+`networks/netem.toml` runs both perturbations.
+
 ## Test Stages
 
 The test runner has the following stages, which can also be executed explicitly by running `./build/runner -f <manifest> <stage>`:
