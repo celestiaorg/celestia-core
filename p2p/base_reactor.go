@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/cometbft/cometbft/libs/trace"
@@ -87,8 +88,10 @@ type BaseReactor struct {
 	// proto before unmarshalling
 	chPrechecks map[byte]func([]byte) error
 	// processor is called with the incoming channel and is responsible for
-	// unmarshalling the messages and calling Receive on the reactor.
+	// unmarshalling the messages and calling Receive on the reactor. Nil
+	// means ProcessorWithReactor.
 	processor   ProcessorFunc
+	impl        Reactor
 	name        string
 	traceClient trace.Tracer
 }
@@ -116,36 +119,52 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		incoming:    make(chan UnmarshalResult, 100),
 		chIDs:       chIDs,
 		chPrechecks: chPrechecks,
-		processor:   nil, // Will be set after base is created
+		impl:        impl,
 		name:        name,
 		traceClient: trace.NoOpTracer(),
 	}
 	for _, opt := range opts {
 		opt(base)
 	}
+	return base
+}
 
-	// Set the processor after base is created, only if it hasn't been set by options
-	if base.processor == nil {
-		base.processor = ProcessorWithReactor(impl, base)
+// Start starts the reactor and its processor. The processor starts here, not
+// in NewBaseReactor, because reactors embed a copy of the BaseReactor that
+// NewBaseReactor returns, and only that copy is configured by the switch.
+func (br *BaseReactor) Start() error {
+	if err := br.BaseService.Start(); err != nil {
+		return err
 	}
-
+	processor := br.processor
+	if processor == nil {
+		processor = ProcessorWithReactor(br.impl, br)
+	}
+	ctx, incoming := br.ctx, br.incoming
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				base.Logger.Error("processor panicked", "err", r)
-				// Try to stop the reactor gracefully only if it's running
-				if base.IsRunning() {
-					if err := base.Stop(); err != nil {
-						base.Logger.Error("failed to stop reactor after panic", "err", err)
+				br.Logger.Error("processor panicked", "err", r)
+				if br.IsRunning() {
+					if err := br.impl.Stop(); err != nil {
+						br.Logger.Error("failed to stop reactor after panic", "err", err)
 					}
 				}
 			}
 		}()
-
-		base.processor(ctx, base.incoming)
+		processor(ctx, incoming)
 	}()
+	return nil
+}
 
-	return base
+// Stop stops the reactor and its processor. The processor is canceled here
+// because many reactors override OnStop without calling BaseReactor.OnStop.
+func (br *BaseReactor) Stop() error {
+	err := br.BaseService.Stop()
+	if !errors.Is(err, service.ErrNotStarted) {
+		br.cancel()
+	}
+	return err
 }
 
 // WithProcessor sets the processor function for the reactor. The processor
@@ -211,6 +230,9 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // queueUnprocessedEnvelopeBlocking queues an unprocessed envelope, blocking
 // while the incoming queue is full.
 func (br *BaseReactor) queueUnprocessedEnvelopeBlocking(e UnprocessedEnvelope) {
+	if br.ctx.Err() != nil {
+		return
+	}
 	if br.unmarshalSem != nil {
 		select {
 		case <-br.ctx.Done():
@@ -233,6 +255,9 @@ func (br *BaseReactor) queueUnprocessedEnvelopeBlocking(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.ctx.Err() != nil {
+		return
+	}
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 	}
@@ -288,8 +313,12 @@ func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult 
 		}
 	}
 
-	res.Msg = proto.Clone(mt)
-	res.Err = proto.Unmarshal(e.Message, res.Msg)
+	msg := proto.Clone(mt)
+	if err := proto.Unmarshal(e.Message, msg); err != nil {
+		res.Err = err
+		return res
+	}
+	res.Msg = msg
 	return res
 }
 
@@ -308,6 +337,11 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) ProcessorFunc 
 			case res, ok := <-incoming:
 				if !ok {
 					// this means the channel was closed.
+					return
+				}
+				// select picks randomly when the reactor stopped while a
+				// message was waiting; do not deliver after Stop.
+				if ctx.Err() != nil {
 					return
 				}
 				// Process message with panic recovery for individual peer

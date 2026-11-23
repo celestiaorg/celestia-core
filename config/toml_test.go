@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -159,4 +160,37 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 		assert.NotContains(t, configContent, pattern,
 			"Config should not contain mempool type field")
 	}
+}
+
+// Configs from v0.43.0-rc builds hold a bool; viper decodes it weakly, and
+// celestia-app remaps the legacy true (1ns) to the default.
+func TestFlushLowLatencyLegacyBool(t *testing.T) {
+	for raw, want := range map[string]time.Duration{"true": time.Nanosecond, "false": 0, `"5ms"`: 5 * time.Millisecond} {
+		v := viper.New()
+		v.SetConfigType("toml")
+		require.NoError(t, v.ReadConfig(strings.NewReader("[p2p]\nflush_low_latency = "+raw+"\n")))
+		cfg := config.DefaultConfig()
+		require.NoError(t, v.Unmarshal(cfg))
+		require.Equal(t, want, cfg.P2P.FlushLowLatency, raw)
+	}
+}
+
+// A config.toml written before the blockstore memtable keys existed parses to their defaults.
+func TestBlockstoreMemtableDefaultsForOldConfig(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, config.RenderConfig(&buf, config.DefaultConfig()))
+	var old []string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if !strings.HasPrefix(line, "blockstore_memtable_size_mb") && !strings.HasPrefix(line, "blockstore_goleveldb_") {
+			old = append(old, line)
+		}
+	}
+	values := viper.New()
+	values.SetConfigType("toml")
+	require.NoError(t, values.ReadConfig(strings.NewReader(strings.Join(old, "\n"))))
+	require.False(t, values.IsSet("storage.blockstore_memtable_size_mb"))
+	cfg := config.DefaultConfig()
+	require.NoError(t, values.Unmarshal(cfg))
+	require.Equal(t, 64, cfg.Storage.BlockstoreMemtableSizeMB)
+	require.True(t, cfg.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction)
 }

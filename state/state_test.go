@@ -21,6 +21,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
+	cmttime "github.com/cometbft/cometbft/types/time"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -1208,7 +1209,7 @@ func TestMedianTime(t *testing.T) {
 			},
 		}
 
-		medianTime, err := sm.MedianTime(commit, vals)
+		medianTime, err := sm.MedianTime(commit, vals, sm.StrictMedianTimeAppVersion)
 		require.NoError(t, err)
 		require.Equal(t, medianTime, now.Add(1*time.Minute))
 	})
@@ -1232,7 +1233,7 @@ func TestMedianTime(t *testing.T) {
 			},
 		}
 
-		_, err := sm.MedianTime(commit, vals)
+		_, err := sm.MedianTime(commit, vals, sm.StrictMedianTimeAppVersion)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "commit validator not found in validator set")
 	})
@@ -1255,13 +1256,84 @@ func TestMedianTime(t *testing.T) {
 			},
 		}
 
-		medianTime, err := sm.MedianTime(commit, vals)
+		medianTime, err := sm.MedianTime(commit, vals, sm.StrictMedianTimeAppVersion)
 		require.NoError(t, err)
 		// With two equal weights each timestamp has exactly half of the
 		// participating power. The median requires a strict majority, so it is
 		// the later time, where cumulative power first exceeds half.
 		require.Equal(t, medianTime, now.Add(1*time.Minute))
 	})
+
+	t.Run("app versions before the strict rule use the legacy median", func(t *testing.T) {
+		now := time.Now()
+		commit := &types.Commit{
+			Height: 1,
+			Signatures: []types.CommitSig{
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val1.Address,
+					Timestamp:        now,
+				},
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val2.Address,
+					Timestamp:        now.Add(1 * time.Minute),
+				},
+			},
+		}
+
+		medianTime, err := sm.MedianTime(commit, vals, sm.StrictMedianTimeAppVersion-1)
+		require.NoError(t, err)
+		// The legacy rule stops where cumulative power reaches half, so it
+		// picks the earlier time. Blocks committed before the strict rule
+		// activated were made this way and must keep validating.
+		require.Equal(t, medianTime, now)
+	})
+}
+
+// TestMakeBlockMedianTimeRuleByAppVersion checks that a proposer uses the
+// median rule of the app version in its state, so nodes on either side of the
+// upgrade build the same block time for the same height.
+func TestMakeBlockMedianTimeRuleByAppVersion(t *testing.T) {
+	tearDown, _, state := setupTestCase(t)
+	defer tearDown(t)
+
+	val1 := types.NewValidator(ed25519.GenPrivKey().PubKey(), 30)
+	val2 := types.NewValidator(ed25519.GenPrivKey().PubKey(), 30)
+	state.LastValidators = types.NewValidatorSet([]*types.Validator{val1, val2})
+
+	now := cmttime.Now()
+	commit := &types.Commit{
+		Height: state.InitialHeight,
+		Signatures: []types.CommitSig{
+			{
+				BlockIDFlag:      types.BlockIDFlagCommit,
+				ValidatorAddress: val1.Address,
+				Timestamp:        now,
+			},
+			{
+				BlockIDFlag:      types.BlockIDFlagCommit,
+				ValidatorAddress: val2.Address,
+				Timestamp:        now.Add(1 * time.Minute),
+			},
+		},
+	}
+
+	testCases := []struct {
+		appVersion uint64
+		want       time.Time
+	}{
+		{appVersion: sm.StrictMedianTimeAppVersion - 1, want: now},
+		{appVersion: sm.StrictMedianTimeAppVersion, want: now.Add(1 * time.Minute)},
+	}
+	for _, tc := range testCases {
+		state.Version.Consensus.App = tc.appVersion
+		block, err := state.MakeBlockWithoutPartset(
+			state.InitialHeight+1, types.Data{}, commit, nil, state.Validators.Proposer.Address,
+		)
+		require.NoError(t, err)
+		require.True(t, tc.want.Equal(block.Time), "app version %d: got %v, want %v", tc.appVersion, block.Time, tc.want)
+	}
 }
 
 func TestUpdateStateCopiesDynamicTimeoutCommit(t *testing.T) {

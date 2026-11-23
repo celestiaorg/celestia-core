@@ -249,6 +249,8 @@ type testApp struct {
 	LastTime         time.Time
 	ValidatorUpdates []abci.ValidatorUpdate
 	AppHash          []byte
+	// AppVersion is the app version FinalizeBlock returns. Zero means 1.
+	AppVersion uint64
 }
 
 var _ abci.Application = (*testApp)(nil)
@@ -268,12 +270,19 @@ func (app *testApp) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBl
 		ValidatorUpdates: app.ValidatorUpdates,
 		ConsensusParamUpdates: &cmtproto.ConsensusParams{
 			Version: &cmtproto.VersionParams{
-				App: 1,
+				App: app.appVersion(),
 			},
 		},
 		TxResults: txResults,
 		AppHash:   app.AppHash,
 	}, nil
+}
+
+func (app *testApp) appVersion() uint64 {
+	if app.AppVersion == 0 {
+		return 1
+	}
+	return app.AppVersion
 }
 
 func (app *testApp) Commit(_ context.Context, _ *abci.RequestCommit) (*abci.ResponseCommit, error) {

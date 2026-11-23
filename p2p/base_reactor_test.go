@@ -27,6 +27,8 @@ func TestBaseReactorProcessor(t *testing.T) {
 	// a reactor using the default processor should be able to queue
 	// messages, and they get processed in order.
 	or := newOrderedReactor()
+	require.NoError(t, or.Start())
+	t.Cleanup(func() { _ = or.Stop() })
 
 	msgs := []string{"msg1", "msg2", "msg3"}
 	or.fillQueue(t, msgs...)
@@ -226,12 +228,10 @@ func TestBaseReactorProcessorPanic(t *testing.T) {
 		p2p.WithProcessor(func(ctx context.Context, incoming <-chan p2p.UnmarshalResult) {
 			panic("processor startup panic")
 		}))
+	// The processor starts with the reactor; its panic must stop the reactor
+	// the switch runs, not crash the test.
+	require.NoError(t, pr.Start())
 
-	// The reactor should not panic the test, even with a panicking processor
-	time.Sleep(100 * time.Millisecond)
-
-	// Wait for the panic handler to complete stopping the reactor
-	// Use a retry loop to avoid race condition between Stop() and IsRunning()
 	require.Eventually(t, func() bool {
 		return !pr.IsRunning()
 	}, time.Second, 10*time.Millisecond, "reactor should be stopped after processor panic")
@@ -413,6 +413,8 @@ func (r *precheckReactor) Receive(e p2p.Envelope) {
 // the precheck rejects never reaches Receive, while one it accepts does.
 func TestBaseReactorRecvMessagePrecheck(t *testing.T) {
 	r := newPrecheckReactor()
+	require.NoError(t, r.Start())
+	t.Cleanup(func() { _ = r.Stop() })
 	peer := &imaginaryPeer{}
 
 	rejected, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("reject me")}})
@@ -488,9 +490,10 @@ func (r *stalledReactor) Receive(p2p.Envelope) {
 // instead of blocking the caller (the peer's receive routine).
 func TestBaseReactorWithQueueingFunc(t *testing.T) {
 	r := newStalledReactor()
+	require.NoError(t, r.Start())
 	t.Cleanup(func() {
 		r.release()
-		r.OnStop()
+		_ = r.Stop()
 	})
 	peer := &imaginaryPeer{}
 	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("tx")}})

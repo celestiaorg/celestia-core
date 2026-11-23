@@ -36,6 +36,9 @@ const (
 	localVersion = "cometbft/e2e-node:local-version"
 )
 
+// LocalVersion is the Docker image built from the local source tree.
+const LocalVersion = localVersion
+
 type (
 	Mode         string
 	Protocol     string
@@ -60,6 +63,8 @@ const (
 	PerturbationPause      Perturbation = "pause"
 	PerturbationRestart    Perturbation = "restart"
 	PerturbationUpgrade    Perturbation = "upgrade"
+	PerturbationLatency    Perturbation = "latency"
+	PerturbationPartition  Perturbation = "partition"
 
 	EvidenceAgeHeight int64         = 14
 	EvidenceAgeTime   time.Duration = 1500 * time.Millisecond
@@ -511,7 +516,8 @@ func (n Node) Validate(testnet Testnet) error {
 				return fmt.Errorf("'upgrade' perturbation can appear at most once per node")
 			}
 			upgradeFound = true
-		case PerturbationDisconnect, PerturbationKill, PerturbationPause, PerturbationRestart:
+		case PerturbationDisconnect, PerturbationKill, PerturbationPause, PerturbationRestart,
+			PerturbationLatency, PerturbationPartition:
 		default:
 			return fmt.Errorf("invalid perturbation %q", perturbation)
 		}

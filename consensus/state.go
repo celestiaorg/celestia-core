@@ -682,10 +682,7 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.rs.Height = height
-	select {
-	case cs.newHeightOrRoundChan <- struct{}{}:
-	default:
-	}
+	cs.wakeSyncData()
 }
 
 func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
@@ -700,6 +697,12 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.rs.Round = round
 	cs.rs.Step = step
+	cs.wakeSyncData()
+}
+
+// wakeSyncData asks syncData to hand consensus the parts the propagator already
+// holds for the current proposal. It never blocks.
+func (cs *State) wakeSyncData() {
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
 	default:
@@ -987,7 +990,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.afterTimeoutCommit(cs.rs.CommitTime, cs.state.Timeouts)
 		}
 	}
-	cs.applyDynamicTimeoutCommit(prevStartTime, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
+	cs.applyDynamicTimeoutCommit(prevStartTime, state.LastBlockID, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -1019,20 +1022,32 @@ func (cs *State) updateToState(state sm.State) {
 	cs.newStep()
 }
 
-// applyDynamicTimeoutCommit raises StartTime to the previous deadline plus dynamic,
-// measured on the local clock, and never leaves it in the past. 0 is a no-op.
-func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time.Duration) {
+// applyDynamicTimeoutCommit makes the next height start at least dynamic after this height's
+// start, measured from the committed proposal's time if that is earlier (we started late), but
+// never more than dynamic/2 earlier. It never leaves StartTime in the past. 0 is a no-op.
+func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, lastBlockID types.BlockID, dynamic time.Duration) {
 	if dynamic <= 0 {
 		cs.pacingStarted = false
 		return
 	}
 	now := cmttime.Now()
-	// Without a paced anchor keep the legacy start: grid nodes start ~TimeoutCommit after
-	// the same commit, so anchoring on the commit would run one floor late (#3643).
+	// After a restart or our first commit there is no previous start to measure from: keep the
+	// legacy start, since measuring from the commit would start a whole interval late (#3643).
 	bootstrap := cs.rs.CommitTime.IsZero() || !cs.pacingStarted || prevStartTime.After(cs.rs.CommitTime)
 	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
-	if deadline := prevStartTime.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
-		cs.rs.StartTime = deadline
+	intervalStart, p := prevStartTime, cs.rs.Proposal
+	usesProposalTime := p != nil && !cs.replayMode && !p.BlockID.IsZero() &&
+		p.BlockID.Equals(lastBlockID) && p.Timestamp.Before(prevStartTime)
+	if usesProposalTime {
+		// If the committed proposal was stamped before we started, we were late: measure from its
+		// time instead, but at most dynamic/2 earlier, which bounds what a backdated stamp can gain.
+		intervalStart = p.Timestamp
+		if earliestAllowed := prevStartTime.Add(-dynamic / 2); intervalStart.Before(earliestAllowed) {
+			intervalStart = earliestAllowed
+		}
+	}
+	if nextStart := intervalStart.Add(dynamic); !bootstrap && nextStart.After(cs.rs.StartTime) {
+		cs.rs.StartTime = nextStart
 	}
 	wait := cs.rs.StartTime.Sub(now)
 	if wait <= 0 {
@@ -1047,6 +1062,9 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
 		if wait == 0 {
 			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+		}
+		if usesProposalTime {
+			cs.metrics.PacingBypass.With("reason", "proposal").Add(1)
 		}
 	}
 }
@@ -2594,6 +2612,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
+		// parts that reached us before the proposal were dropped; take them now.
+		cs.wakeSyncData()
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
@@ -3107,6 +3127,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
+					// parts that reached us before the polka were dropped; take them now.
+					cs.wakeSyncData()
 				}
 
 				// Announce unconditionally, as before this change: the reactor
@@ -3512,7 +3534,8 @@ func (cs *State) syncData() {
 					continue
 				}
 				part := partset.GetPart(indice)
-				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				// like partChan's parts: peer data, kept out of the WAL under only_internal_wal.
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		case part, ok := <-partChan:
 			if !ok {

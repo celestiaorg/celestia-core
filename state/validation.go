@@ -149,7 +149,7 @@ func validateBlock(state State, block *types.Block, opts ...func(*blockValidatio
 			)
 		}
 
-		medianTime, err := MedianTime(block.LastCommit, state.LastValidators)
+		medianTime, err := MedianTime(block.LastCommit, state.LastValidators, state.Version.Consensus.App)
 		if err != nil {
 			return fmt.Errorf("error validating block while calculating median time: %w", err)
 		}

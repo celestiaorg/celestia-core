@@ -32,7 +32,22 @@ func NewWeightedTime(time time.Time, weight int64) *WeightedTime {
 }
 
 // WeightedMedian computes weighted median time for a given array of WeightedTime and the total voting power.
-func WeightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64) (res time.Time) {
+// It returns the first time whose cumulative weight is strictly greater than half of totalVotingPower,
+// so a set of times holding at most half of the weight cannot select the median on its own.
+func WeightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64) time.Time {
+	return weightedMedian(weightedTimes, totalVotingPower, true)
+}
+
+// LegacyWeightedMedian computes the weighted median with the rule used before
+// the strict-majority fix: the first time whose cumulative weight reaches
+// floor(totalVotingPower/2). It lets a participant with exactly that weight
+// select the median, so use it only to make and validate blocks for app
+// versions that committed under this rule.
+func LegacyWeightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64) time.Time {
+	return weightedMedian(weightedTimes, totalVotingPower, false)
+}
+
+func weightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64, strict bool) (res time.Time) {
 	median := totalVotingPower / 2
 
 	sort.Slice(weightedTimes, func(i, j int) bool {
@@ -47,11 +62,7 @@ func WeightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64) (res 
 
 	for _, weightedTime := range weightedTimes {
 		if weightedTime != nil {
-			// Pick the first time whose cumulative weight is strictly greater
-			// than half of the total. With `<=` a participant holding exactly
-			// half of the (integer-divided) total could select the result
-			// without a strict majority behind it.
-			if median < weightedTime.Weight {
+			if median < weightedTime.Weight || (!strict && median == weightedTime.Weight) {
 				res = weightedTime.Time
 				break
 			}

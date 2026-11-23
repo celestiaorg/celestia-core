@@ -188,6 +188,8 @@ type ManifestNode struct {
 	// kill:       kills the node with SIGKILL then restarts it
 	// pause:      temporarily pauses (freezes) the node
 	// restart:    restarts the node, shutting it down with SIGTERM
+	// latency:    temporarily delays the node's outgoing packets, with jitter
+	// partition:  temporarily drops all of the node's outgoing packets
 	Perturb []string `toml:"perturb"`
 
 	// SendNoLoad determines if the e2e test should send load to this node.

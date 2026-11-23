@@ -1152,3 +1152,106 @@ func TestReactorDuplicateClaimDoesNotCoverNextSequence(t *testing.T) {
 		})
 	}
 }
+
+// TestReactorRequestsEveryKeyQueuedAtSequence checks that when peers
+// announce different txs at the same signer/sequence, each of those txs is
+// requested. SeenTx metadata is unverified, so the scan cannot tell which
+// claim is true, and a claim for one tx must not hold back another.
+func TestReactorRequestsEveryKeyQueuedAtSequence(t *testing.T) {
+	signer := []byte("sender-000-0")
+
+	testCases := []struct {
+		name string
+		// otherFirst is set when the conflicting claims are announced
+		// before the honest ones.
+		otherFirst bool
+	}{
+		{name: "conflicting claims announced after the honest ones"},
+		{name: "conflicting claims announced before the honest ones", otherFirst: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, other := peers[0], peers[1]
+			honestID := reactor.ids.GetIDForPeer(honest.ID())
+			otherID := reactor.ids.GetIDForPeer(other.ID())
+			app.SetSequence(string(signer), 0)
+
+			txs := make([]types.Tx, 4)
+			conflicting := make([]types.TxKey, len(txs))
+			for i := range txs {
+				txs[i] = newDefaultTx(fmt.Sprintf("same-sequence-%d", i))
+				app.txSequences[string(txs[i])] = uint64(i)
+				conflicting[i] = types.Tx(fmt.Sprintf("same-sequence-conflict-%d", i)).Key()
+			}
+
+			announceConflicting := func() {
+				for i := 1; i < len(txs); i++ {
+					receiveSeenTx(reactor, other, conflicting[i], signer, uint64(i))
+				}
+			}
+			if tc.otherFirst {
+				announceConflicting()
+			}
+			for i, tx := range txs {
+				receiveSeenTx(reactor, honest, tx.Key(), signer, uint64(i))
+			}
+			if !tc.otherFirst {
+				announceConflicting()
+			}
+
+			receiveTx(reactor, honest, txs[0])
+			require.True(t, pool.Has(txs[0].Key()))
+
+			for i := 1; i < len(txs); i++ {
+				require.EqualValues(t, honestID, reactor.requests.ForTx(txs[i].Key()), "the tx at sequence %d must be requested", i)
+				require.EqualValues(t, otherID, reactor.requests.ForTx(conflicting[i]), "the other tx at sequence %d must be requested", i)
+			}
+
+			// The honest txs arrive and are accepted in order.
+			for i := 1; i < len(txs); i++ {
+				receiveTx(reactor, honest, txs[i])
+				require.True(t, pool.Has(txs[i].Key()), "the tx at sequence %d must enter the mempool", i)
+			}
+		})
+	}
+}
+
+// TestReactorSameSequenceClaimsStayBounded checks that many claims at one
+// sequence do not become more requests than the existing limits allow: each
+// peer is asked for at most maxRequestsPerPeer txs, and no tx is requested
+// maxReceivedBufferSize or more sequences ahead of the expected one.
+func TestReactorSameSequenceClaimsStayBounded(t *testing.T) {
+	signer := []byte("sender-000-0")
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	honest, other := peers[0], peers[1]
+	honestID := reactor.ids.GetIDForPeer(honest.ID())
+	otherID := reactor.ids.GetIDForPeer(other.ID())
+	app.SetSequence(string(signer), 0)
+
+	// The honest peer announces one tx at each sequence, to past the
+	// look-ahead limit.
+	txs := make([]types.Tx, maxReceivedBufferSize+5)
+	for i := range txs {
+		txs[i] = newDefaultTx(fmt.Sprintf("bounded-%d", i))
+		app.txSequences[string(txs[i])] = uint64(i)
+		receiveSeenTx(reactor, honest, txs[i].Key(), signer, uint64(i))
+	}
+	// The other peer announces many more txs at sequence 1 than one peer
+	// can be asked for.
+	for i := 0; i < 3*maxRequestsPerPeer; i++ {
+		receiveSeenTx(reactor, other, types.Tx(fmt.Sprintf("bounded-conflict-%d", i)).Key(), signer, 1)
+	}
+
+	receiveTx(reactor, honest, txs[0])
+	require.True(t, pool.Has(txs[0].Key()))
+
+	require.Equal(t, maxRequestsPerPeer, reactor.requests.CountForPeer(otherID), "requests to one peer stay under the per-peer limit")
+	for i := 1; i < len(txs); i++ {
+		if i < 1+maxReceivedBufferSize {
+			require.EqualValues(t, honestID, reactor.requests.ForTx(txs[i].Key()), "the tx at sequence %d must be requested", i)
+		} else {
+			require.Zero(t, reactor.requests.ForTx(txs[i].Key()), "the tx at sequence %d is too far ahead to request", i)
+		}
+	}
+}

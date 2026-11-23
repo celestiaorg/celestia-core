@@ -11,6 +11,47 @@ import (
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra/docker"
 )
 
+const (
+	// netem settings for the latency and partition perturbations. They are
+	// applied to every interface of the node except lo, so they do not
+	// depend on the name Docker gives the interface.
+	netemLatency      = "netem delay 200ms 50ms distribution normal"
+	netemPartition    = "netem loss 100%"
+	netemHeal         = ""
+	latencyDuration   = 20 * time.Second
+	partitionDuration = 20 * time.Second
+)
+
+// netemArgs returns the docker arguments that set the root queueing
+// discipline of every interface of a container to qdisc, or remove it when
+// qdisc is netemHeal. tc runs in a separate container from the local image
+// that shares the node's network namespace, so the node image does not need
+// tc or NET_ADMIN. This also works for nodes that run older images.
+func netemArgs(container, qdisc string) []string {
+	tc := `tc qdisc replace dev "$dev" root ` + qdisc
+	if qdisc == netemHeal {
+		tc = `tc qdisc del dev "$dev" root`
+	}
+	script := `for dev in $(ls /sys/class/net); do [ "$dev" = lo ] || ` + tc + ` || exit 1; done`
+	return []string{
+		"run", "--rm",
+		"--network", "container:" + container,
+		"--cap-add", "NET_ADMIN",
+		"--entrypoint", "sh",
+		e2e.LocalVersion,
+		"-c", script,
+	}
+}
+
+// netem applies qdisc to a container's network for duration, then removes it.
+func netem(container, qdisc string, duration time.Duration) error {
+	if err := docker.Exec(context.Background(), netemArgs(container, qdisc)...); err != nil {
+		return err
+	}
+	time.Sleep(duration)
+	return docker.Exec(context.Background(), netemArgs(container, netemHeal)...)
+}
+
 // Perturbs a running testnet.
 func Perturb(ctx context.Context, testnet *e2e.Testnet) error {
 	for _, node := range testnet.Nodes {
@@ -76,6 +117,18 @@ func PerturbNode(ctx context.Context, node *e2e.Node, perturbation e2e.Perturbat
 	case e2e.PerturbationRestart:
 		logger.Info("perturb node", "msg", log.NewLazySprintf("Restarting node %v...", node.Name))
 		if err := docker.ExecCompose(context.Background(), testnet.Dir, "restart", name); err != nil {
+			return nil, err
+		}
+
+	case e2e.PerturbationLatency:
+		logger.Info("perturb node", "msg", log.NewLazySprintf("Adding latency to node %v...", node.Name))
+		if err := netem(name, netemLatency, latencyDuration); err != nil {
+			return nil, err
+		}
+
+	case e2e.PerturbationPartition:
+		logger.Info("perturb node", "msg", log.NewLazySprintf("Partitioning node %v...", node.Name))
+		if err := netem(name, netemPartition, partitionDuration); err != nil {
 			return nil, err
 		}
 

@@ -234,6 +234,40 @@ func TestHandleWantsTracksOnlyCachedRounds(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
+// TestHandleWantsServesWhenPeerStateFull checks that a want for a cached
+// proposal is still served when the peer's state is at its height cap and
+// cannot track a request counter for it.
+func TestHandleWantsServesWhenPeerStateFull(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+
+	r.pmtx.Lock()
+	height := r.height + MaxPeerStateHeights
+	round := int32(0)
+	r.proposals[height] = map[int32]*proposalData{
+		round: {block: proptypes.NewCombinedPartSetFromOriginal(ps, false)},
+	}
+	r.pmtx.Unlock()
+
+	p := r.getPeer(rp.ID())
+	require.NotNil(t, p)
+	// fill the peer state with heights below the wanted one, so the cap
+	// refuses it
+	for h := r.height; h < height; h++ {
+		require.True(t, p.SetRemainingRequests(h, round, 1))
+	}
+
+	parts := bits.NewBitArray(int(ps.Total()) * 2)
+	parts.SetIndex(0, true)
+	parts.SetIndex(1, true)
+	r.handleWants(rp.ID(), &proptypes.WantParts{Height: height, Round: round, Parts: parts, MissingPartsCount: 1})
+
+	require.Len(t, rp.sentParts(), 1, "want must be served, limited by its missing parts count")
+	require.Zero(t, p.GetRemainingRequests(height, round))
+	_, has := p.GetWants(height, round)
+	require.False(t, has)
+}
+
 // TestRelayBuildsParityAfterCompleting checks that a relay builds parity once
 // its originals complete and serves a want parked on it, without the proposer
 // sending parity or the retry ticker.

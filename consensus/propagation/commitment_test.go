@@ -263,7 +263,9 @@ func TestRecoverPartsLocally(t *testing.T) {
 }
 
 // TestRecoverPartsFromLiveMempool recovers parts from a CAT pool that is
-// concurrently adding and removing txs. Run it with -race.
+// concurrently adding and removing txs. Run it with -race. Only txs in the
+// second half of the block are removed, so parts in the first half stay
+// recoverable however the removals interleave with recovery.
 func TestRecoverPartsFromLiveMempool(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
@@ -305,18 +307,23 @@ func TestRecoverPartsFromLiveMempool(t *testing.T) {
 			default:
 			}
 			_ = pool.CheckTx([]byte(fmt.Sprintf("new%d=%s", i, cmtrand.Str(1000))), nil, mempool.TxInfo{})
-			if i%2 == 1 && i < len(txs) {
-				_ = pool.RemoveTxByKey(txs[i].Key())
+			if j := len(txs)/2 + i; i%2 == 1 && j < len(txs) {
+				_ = pool.RemoveTxByKey(txs[j].Key())
 			}
 		}
 	})
+	// stop the writer before the reactor and app stop, even if an assertion
+	// below fails
+	t.Cleanup(func() {
+		close(done)
+		wg.Wait()
+	})
 
-	recovered := 0
 	for range 5 {
 		data.block = proptypes.NewCombinedSetFromCompactBlock(cb)
 		reactor.recoverPartsFromMempool(cb)
 		original := data.block.Original()
-		recovered += int(original.Count())
+		require.NotZero(t, original.Count(), "parts in the first half must be recovered")
 		for _, i := range original.BitArray().GetTrueIndices() {
 			require.Equal(t, ps.GetPart(i).Bytes, original.GetPart(i).Bytes)
 		}
@@ -324,9 +331,6 @@ func TestRecoverPartsFromLiveMempool(t *testing.T) {
 			<-reactor.partChan
 		}
 	}
-	close(done)
-	wg.Wait()
-	require.NotZero(t, recovered)
 }
 
 var _ Mempool = &mockMempool{}

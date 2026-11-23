@@ -384,7 +384,10 @@ func FuzzPeerReceive(f *testing.F) {
 
 		r := &fuzzReactor{sentinel: make(chan struct{})}
 		r.BaseReactor = *NewBaseReactor("fuzz", r)
-		defer r.OnStop()
+		if err := r.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer r.Stop() //nolint:errcheck
 		chDescs := r.GetChannels()[:2]
 		reactorsByCh := map[byte]Reactor{0x01: r, 0x02: r}
 

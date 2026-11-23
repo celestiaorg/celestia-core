@@ -5,7 +5,11 @@
 # The make target passes -count=1, so setup-go's restored build cache never
 # replays an earlier night's test results.
 #
-# Reproduce one group locally with:
+# Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
+# which watches this workflow by name. A failure can describe an exploitable
+# bug, and this repository's logs are public. As in fuzz-nightly.yml, each job
+# prints only PASS or FAIL, and on main files a Linear issue holding the
+# output. Reproduce one group locally with:
 #   make test-deadlock-group-00 NUM_SPLIT=6
 name: Deadlock Tests
 on:
@@ -33,5 +37,32 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: "go.mod"
+      # The output stays in a file under runner.temp and is sent only to Linear.
       - name: Run Go Tests with deadlock detection
-        run: make test-deadlock-group-${{ matrix.part }} NUM_SPLIT=6
+        env:
+          PART: ${{ matrix.part }}
+          LOG_DIR: ${{ runner.temp }}/deadlock
+        run: |
+          target="test-deadlock-group-$PART"
+          mkdir -p "$LOG_DIR"
+          if make "$target" NUM_SPLIT=6 >"$LOG_DIR/$target.log" 2>&1; then
+            echo "PASS $target"
+          else
+            echo "FAIL $target (output withheld; see the Linear issue)"
+            echo "2 . $target" >"$LOG_DIR/failed.txt"
+            exit 1
+          fi
+
+      - name: File Linear issue for failing group
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          LOG_DIR: ${{ runner.temp }}/deadlock
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          TITLE_PREFIX: Nightly celestia-core deadlock test failure
+          KIND: deadlock test group
+          REPRODUCE: Reproduce with `make <target> NUM_SPLIT=6`, where <target> is named above.
+        run: python3 .github/scripts/report-fuzz-failures.py

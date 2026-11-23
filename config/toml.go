@@ -336,10 +336,10 @@ persistent_peers_max_dial_period = "{{ .P2P.PersistentPeersMaxDialPeriod }}"
 # Time to wait before flushing messages out on the connection
 flush_throttle_timeout = "{{ .P2P.FlushThrottleTimeout }}"
 
-# Flush latency-critical messages (votes, round steps, compact blocks,
-# haves, wants, recovery parts) as soon as none are left queued, instead of
-# waiting for flush_throttle_timeout. Other traffic stays batched.
-flush_low_latency = {{ .P2P.FlushLowLatency }}
+# How long latency-critical messages (votes, round steps, compact blocks,
+# haves, wants, recovery parts) wait once none are left queued, so bursts
+# share frames. "0s" waits for flush_throttle_timeout like other traffic.
+flush_low_latency = "{{ .P2P.FlushLowLatency }}"
 
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = {{ .P2P.MaxPacketMsgPayloadSize }}
@@ -616,6 +616,16 @@ compact = {{ .Storage.Compact }}
 # it is too much of an overhead to try compaction every block. But it should also not be a very
 # large multiple of your retain height as it might occur bigger overheads.
 compaction_interval = {{ .Storage.CompactionInterval }}
+
+# Memtable size of the blockstore database in MiB (goleveldb WriteBuffer, pebble MemTableSize),
+# for goleveldb and pebbledb only. Up to about three memtables are held in memory at once.
+# Smaller memtables make saving large blocks stall on level-0 compaction. 0 = engine default (4 MiB).
+blockstore_memtable_size_mb = {{ .Storage.BlockstoreMemtableSizeMB }}
+
+# goleveldb only: write blockstore batches larger than the memtable through the journal
+# instead of straight to level-0 tables, which waits on compaction. Set this to false and
+# the size above to 0 to restore the engine defaults.
+blockstore_goleveldb_disable_large_batch_transaction = {{ .Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction }}
 
 #######################################################
 ###   Transaction Indexer Configuration Options     ###

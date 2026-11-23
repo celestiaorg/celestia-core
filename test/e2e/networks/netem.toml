@@ -1,0 +1,13 @@
+# Runs the latency and partition perturbations, which use tc netem. Each
+# perturbed validator holds less than 1/3 of the voting power, so the rest of
+# the network keeps making blocks. validator04 is disconnected first, which
+# gives it a new network interface before the netem perturbations run.
+ipv6 = true
+
+[node.validator01]
+[node.validator02]
+perturb = ["latency"]
+[node.validator03]
+perturb = ["partition"]
+[node.validator04]
+perturb = ["disconnect", "latency", "partition"]

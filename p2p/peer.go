@@ -334,6 +334,9 @@ func (p *peer) Status() cmtconn.ConnectionStatus {
 // Send msg bytes to the channel identified by chID byte. Returns false if the
 // send queue is full after timeout, specified by MConnection.
 func (p *peer) Send(e Envelope) bool {
+	if e.Lazy {
+		return p.send(e.ChannelID, e.Message, p.mconn.SendLazy)
+	}
 	return p.send(e.ChannelID, e.Message, p.mconn.Send)
 }
 
