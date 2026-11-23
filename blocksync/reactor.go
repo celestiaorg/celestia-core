@@ -48,6 +48,16 @@ type consensusReactor interface {
 // ReactorOption defines a function argument for Reactor.
 type ReactorOption func(*Reactor)
 
+// ReactorMaxRequesters sets how many blocks are requested ahead of the one
+// being applied. Values below 2 would stall sync and are ignored.
+func ReactorMaxRequesters(n int) ReactorOption {
+	return func(bcR *Reactor) {
+		if n >= 2 {
+			bcR.pool.maxRequesters = n
+		}
+	}
+}
+
 // ReactorVerifyData sets the verifyData field of the reactor.
 func ReactorVerifyData(verifyData bool) ReactorOption {
 	return func(bcR *Reactor) {

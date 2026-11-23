@@ -105,6 +105,7 @@ type BlockPool struct {
 	maxPeerHeight      int64     // the biggest reported height
 	reqLimit           int
 	retryTimeout       time.Duration
+	maxRequesters      int // blocks requested ahead of the pool height
 	lastReceivedBlocks *blockStats
 
 	// atomic
@@ -132,6 +133,7 @@ func newBlockPoolWithTracer(start int64, requestsCh chan<- BlockRequest, errorsC
 		startHeight: start,
 		numPending:  0,
 
+		maxRequesters:      defaultMaxRequesters,
 		requestsCh:         requestsCh,
 		errorsCh:           errorsCh,
 		traceClient:        traceClient,
@@ -187,7 +189,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		pool.mtx.Lock()
 
 		var (
-			maxRequestersCreated = len(pool.requesters) >= defaultMaxRequesters
+			maxRequestersCreated = len(pool.requesters) >= pool.maxRequesters
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
