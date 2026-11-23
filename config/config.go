@@ -303,25 +303,30 @@ type BaseConfig struct {
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
 	FilterPeers bool `mapstructure:"filter_peers"` // false
+
+	// ParallelCommitVerify verifies the signatures of large commits on several
+	// cores. Results and errors are identical to sequential verification.
+	ParallelCommitVerify bool `mapstructure:"parallel_commit_verify"`
 }
 
 // DefaultBaseConfig returns a default base configuration for a CometBFT node
 func DefaultBaseConfig() BaseConfig {
 	return BaseConfig{
-		Version:            version.TMCoreSemVer,
-		Genesis:            defaultGenesisJSONPath,
-		PrivValidatorKey:   defaultPrivValKeyPath,
-		PrivValidatorState: defaultPrivValStatePath,
-		NodeKey:            defaultNodeKeyPath,
-		Moniker:            defaultMoniker,
-		ProxyApp:           "tcp://127.0.0.1:36658",
-		ABCI:               "socket",
-		LogLevel:           DefaultLogLevel,
-		LogFormat:          LogFormatPlain,
-		FilterPeers:        false,
-		DBBackend:          "pebbledb",
-		DBPath:             DefaultDataDir,
-		BlockstorePath:     DefaultDataDir,
+		Version:              version.TMCoreSemVer,
+		Genesis:              defaultGenesisJSONPath,
+		PrivValidatorKey:     defaultPrivValKeyPath,
+		PrivValidatorState:   defaultPrivValStatePath,
+		NodeKey:              defaultNodeKeyPath,
+		Moniker:              defaultMoniker,
+		ProxyApp:             "tcp://127.0.0.1:36658",
+		ABCI:                 "socket",
+		LogLevel:             DefaultLogLevel,
+		LogFormat:            LogFormatPlain,
+		FilterPeers:          false,
+		DBBackend:            "pebbledb",
+		ParallelCommitVerify: true,
+		DBPath:               DefaultDataDir,
+		BlockstorePath:       DefaultDataDir,
 	}
 }
 

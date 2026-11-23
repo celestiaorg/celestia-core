@@ -161,6 +161,10 @@ abci = "{{ .BaseConfig.ABCI }}"
 # so the app can decide if we should keep the connection or not
 filter_peers = {{ .BaseConfig.FilterPeers }}
 
+# If true, verify the signatures of large commits on several cores.
+# Results are identical to sequential verification.
+parallel_commit_verify = {{ .BaseConfig.ParallelCommitVerify }}
+
 
 #######################################################################
 ###                 Advanced Configuration Options                  ###
