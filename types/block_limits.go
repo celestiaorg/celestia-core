@@ -9,7 +9,8 @@ const (
 	// signature, and v1 mainnet blocks were under 2 MB.
 	MaxBlockTxsCeiling = DefaultMaxBlockSizeBytes/64 + 1
 
-	// MaxBlockTxs matches app v11's combined SDK, PFB and PFF message capacity.
+	// MaxBlockTxs bounds the txs in a block from BlockTxLimitAppVersion. celestia-app
+	// keeps the sum of its SDK, PFB and PFF message caps within it.
 	MaxBlockTxs = 1000
 )
 
