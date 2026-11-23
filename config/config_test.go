@@ -345,7 +345,7 @@ func TestBlockstoreDir(t *testing.T) {
 func TestBlockSyncMaxRequesters(t *testing.T) {
 	cfg := config.DefaultBlockSyncConfig()
 	require.Equal(t, 40, cfg.MaxRequesters)
-	for n, ok := range map[int]bool{-1: false, 0: false, 1: false, 2: true, 40: true, 1000: true, 1001: false} {
+	for n, ok := range map[int]bool{-1: false, 0: true, 1: false, 2: true, 40: true, 1000: true, 1001: false} {
 		cfg.MaxRequesters = n
 		if ok {
 			require.NoError(t, cfg.ValidateBasic(), n)

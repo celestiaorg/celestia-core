@@ -189,7 +189,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		pool.mtx.Lock()
 
 		var (
-			maxRequestersCreated = len(pool.requesters) >= pool.maxRequesters
+			maxRequestersCreated = pool.requestersFull()
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
@@ -209,6 +209,12 @@ func (pool *BlockPool) makeRequestersRoutine() {
 			time.Sleep(requestIntervalMS * time.Millisecond)
 		}
 	}
+}
+
+// requestersFull reports whether the pool has its full window of requesters.
+// The caller must hold pool.mtx.
+func (pool *BlockPool) requestersFull() bool {
+	return len(pool.requesters) >= pool.maxRequesters
 }
 
 func (pool *BlockPool) removeTimedoutPeers() {
