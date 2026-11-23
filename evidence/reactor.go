@@ -62,22 +62,37 @@ func NewReactor(evpool *Pool) *Reactor {
 // queueWithinPeerBudget queues a message, or drops it if the peer is over its
 // budget or the queue is full. It never blocks, because blocking would stall
 // the peer's whole connection. Peers send dropped evidence again.
+//
+// A queued message stays in its peer's budget until Receive takes it, even if
+// the peer disconnects, so reconnecting does not give a peer a new budget.
 func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 	peerID := e.Src.ID()
 	messageSize := len(e.Message)
 	if !evR.waiting.add(peerID, messageSize) {
 		return
 	}
+
+	// A message that fails to decode never reaches Receive, which would leave
+	// it in the peer's budget forever. Reject it here instead.
+	if err := proto.Unmarshal(e.Message, &cmtproto.EvidenceList{}); err != nil {
+		evR.waiting.removeNewest(peerID)
+		evR.stopPeerForUndecodableMessage(e.Src, err)
+		return
+	}
+
 	if !evR.TryQueueEnvelope(e) {
 		evR.waiting.removeNewest(peerID)
 	}
 }
 
-// RemovePeer implements Reactor.
-func (evR *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
-	// Forget the peer's waiting messages. Receive does not do it for a
-	// message that fails to decode.
-	evR.waiting.removePeer(peer.ID())
+func (evR *Reactor) stopPeerForUndecodableMessage(peer p2p.Peer, err error) {
+	evR.Logger.Error("Error decoding message", "src", peer, "chId", EvidenceChannel, "err", err)
+	if evR.Switch == nil {
+		return
+	}
+	// This runs on the peer's receive routine, so stop the peer from another
+	// goroutine.
+	go evR.Switch.StopPeerForError(peer, err, evR.String())
 }
 
 // waitingMessages tracks the sizes of the messages each peer has in the
@@ -137,13 +152,6 @@ func (w *waitingMessages) removeNewest(peerID p2p.ID) {
 		return
 	}
 	w.sizesByPeer[peerID] = sizes[:len(sizes)-1]
-}
-
-// removePeer forgets all waiting messages of the peer.
-func (w *waitingMessages) removePeer(peerID p2p.ID) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-	delete(w.sizesByPeer, peerID)
 }
 
 // SetLogger sets the Logger on the reactor and the underlying Evidence.

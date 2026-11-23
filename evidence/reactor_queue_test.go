@@ -116,9 +116,11 @@ func TestReactorDoesNotBlockPeersWhenQueueIsFull(t *testing.T) {
 func TestReactorLimitsWaitingMessagesPerPeer(t *testing.T) {
 	reactor, logger, message := stalledEvidenceReactor(t)
 
+	// Disconnecting must not give the peer a new budget.
 	floodingPeer := newQueueTestPeer()
 	for i := 0; i < evidence.ReactorIncomingMessageQueueSize; i++ {
 		send(reactor, floodingPeer, message)
+		reactor.RemovePeer(floodingPeer, nil)
 	}
 	send(reactor, newQueueTestPeer(), message)
 	logger.release()
@@ -134,5 +136,25 @@ func TestReactorLimitsWaitingMessagesPerPeer(t *testing.T) {
 	send(reactor, floodingPeer, message)
 	require.Eventually(t, func() bool {
 		return logger.addAttempts.Load() == wantProcessed+1
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// A message that fails to decode is rejected before it is queued, so it does
+// not use up the peer's budget.
+func TestReactorRejectsUndecodableMessages(t *testing.T) {
+	reactor, logger, message := stalledEvidenceReactor(t)
+
+	peer := newQueueTestPeer()
+	for i := 0; i < evidence.ReactorIncomingMessageQueueSize; i++ {
+		send(reactor, peer, []byte("not an evidence list"))
+	}
+	for i := 0; i < evidence.MaxWaitingMessagesPerPeer; i++ {
+		send(reactor, peer, message)
+	}
+	logger.release()
+
+	const wantProcessed = 1 + evidence.MaxWaitingMessagesPerPeer
+	require.Eventually(t, func() bool {
+		return logger.addAttempts.Load() == wantProcessed
 	}, 5*time.Second, 10*time.Millisecond)
 }

@@ -24,7 +24,9 @@ func TestWaitingMessagesBudget(t *testing.T) {
 	require.True(t, waiting.add(peer, 1))
 
 	// The bytes are limited per peer too.
-	waiting.removePeer(peer)
+	for i := 0; i < maxWaitingMessagesPerPeer; i++ {
+		waiting.removeOldest(peer)
+	}
 	require.True(t, waiting.add(peer, maxWaitingBytesPerPeer-10))
 	require.True(t, waiting.add(peer, 10))
 	require.False(t, waiting.add(peer, 1))
