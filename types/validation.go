@@ -237,6 +237,14 @@ func verifyCommitBatch(
 		return fmt.Errorf("unsupported signature algorithm or insufficient signatures for batch verification")
 	}
 
+	// The parallel pass only ever accepts. On any failure the sequential code
+	// below runs and returns the same error as without the parallel pass.
+	if parallelCommitVerify.Load() && countAllSignatures && lookUpByIndex &&
+		tryParallelVerifyCommitBatch(chainID, vals, commit, votingPowerNeeded, ignoreSig, countSig) {
+		parallelCommitVerifyAccepted.Add(1)
+		return nil
+	}
+
 	for idx, commitSig := range commit.Signatures {
 		// skip over signatures that should be ignored
 		if ignoreSig(commitSig) {
