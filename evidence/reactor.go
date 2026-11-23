@@ -72,16 +72,14 @@ func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 		return
 	}
 
-	// A message that fails to decode never reaches Receive, which would leave
-	// it in the peer's budget forever. Reject it here instead.
-	if err := proto.Unmarshal(e.Message, &cmtproto.EvidenceList{}); err != nil {
+	queued, decodeErr := evR.TryQueueEnvelope(e)
+	if !queued {
 		evR.waiting.removeNewest(peerID)
-		evR.stopPeerForUndecodableMessage(e.Src, err)
-		return
 	}
-
-	if !evR.TryQueueEnvelope(e) {
-		evR.waiting.removeNewest(peerID)
+	// A message that fails to decode is not queued, because it would never
+	// reach Receive and would stay in the peer's budget forever.
+	if decodeErr != nil {
+		evR.stopPeerForUndecodableMessage(e.Src, decodeErr)
 	}
 }
 
