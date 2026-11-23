@@ -343,9 +343,6 @@ func (p *peer) Send(e Envelope) bool {
 // TrySend msg bytes to the channel identified by chID byte. Immediately returns
 // false if the send queue is full.
 func (p *peer) TrySend(e Envelope) bool {
-	if e.Lazy {
-		return p.send(e.ChannelID, e.Message, p.mconn.TrySendLazy)
-	}
 	return p.send(e.ChannelID, e.Message, p.mconn.TrySend)
 }
 

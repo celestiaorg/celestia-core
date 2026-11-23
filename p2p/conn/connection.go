@@ -417,15 +417,6 @@ func (c *MConnection) queueSend(chID byte, msgBytes []byte, lazy bool) bool {
 // Queues a message to be sent to channel.
 // Nonblocking, returns true if successful.
 func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
-	return c.queueTrySend(chID, msgBytes, false)
-}
-
-// TrySendLazy is TrySend for a message that never arms the FlushLowLatency timer.
-func (c *MConnection) TrySendLazy(chID byte, msgBytes []byte) bool {
-	return c.queueTrySend(chID, msgBytes, true)
-}
-
-func (c *MConnection) queueTrySend(chID byte, msgBytes []byte, lazy bool) bool {
 	if !c.IsRunning() {
 		return false
 	}
@@ -439,7 +430,7 @@ func (c *MConnection) queueTrySend(chID byte, msgBytes []byte, lazy bool) bool {
 		return false
 	}
 
-	ok = channel.trySendBytes(msgBytes, lazy)
+	ok = channel.trySendBytes(msgBytes, false)
 	if ok {
 		// Wake up sendRoutine if necessary
 		select {
