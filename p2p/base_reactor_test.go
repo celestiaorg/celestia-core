@@ -482,34 +482,6 @@ func (r *stalledReactor) Receive(p2p.Envelope) {
 	r.received.Add(1)
 }
 
-// TestBaseReactorTryQueueEnvelope verifies that TryQueueEnvelope reports
-// whether the envelope was queued and does not block on a full queue.
-func TestBaseReactorTryQueueEnvelope(t *testing.T) {
-	r := newStalledReactor()
-	t.Cleanup(func() {
-		r.release()
-		r.OnStop()
-	})
-	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("tx")}})
-	require.NoError(t, err)
-	env := p2p.UnprocessedEnvelope{Src: &imaginaryPeer{}, Message: msg, ChannelID: 0x78}
-
-	// The first message stalls the processor.
-	require.True(t, r.TryQueueEnvelope(env))
-	select {
-	case <-r.started:
-	case <-time.After(time.Second):
-		t.Fatal("processor did not start processing the first message")
-	}
-
-	// The second message fills the queue and the third is dropped.
-	require.True(t, r.TryQueueEnvelope(env))
-	require.False(t, r.TryQueueEnvelope(env))
-
-	r.release()
-	require.Eventually(t, func() bool { return r.received.Load() == 2 }, time.Second, 10*time.Millisecond)
-}
-
 // TestBaseReactorWithQueueingFunc verifies that QueueUnprocessedEnvelope uses
 // the queueing function set via WithQueueingFunc: with a non-blocking queueing
 // function, a stalled processor and a full queue cause messages to be dropped
