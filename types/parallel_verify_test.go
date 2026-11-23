@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func setParallelSigVerify(t *testing.T, on bool) {
 // commit at height 1 whose signatures are randomly valid, invalid, absent, nil
 // votes or reassigned to another validator's address.
 func randLightCommit(t *testing.T, r *rand.Rand, chainID string, blockID BlockID) (*ValidatorSet, *Commit) {
-	n := 1 + r.Intn(12)
+	n := 1 + r.Intn(30) // spans both sides of minParallelSigs
 	privs := make(map[string]PrivValidator, n)
 	vals := make([]*Validator, n)
 	for i := range vals {
@@ -139,10 +140,10 @@ func (panicPubKey) VerifySignature([]byte, []byte) bool { panic("boom") }
 func TestParallelSigVerifyPanicParity(t *testing.T) {
 	const chainID = "test_chain_id"
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
-	voteSet, valSet, privs := randVoteSet(1, 1, cmtproto.PrecommitType, 4, 1)
+	voteSet, valSet, privs := randVoteSet(1, 1, cmtproto.PrecommitType, 10, 1)
 	commit, err := MakeCommit(blockID, 1, 1, voteSet, privs, time.Unix(1700000000, 0))
 	require.NoError(t, err)
-	for _, idx := range []int{0, 3} { // 3 is past the 2/3 threshold: never reached sequentially
+	for _, idx := range []int{0, 9} { // 9 is past the 2/3 threshold: never reached sequentially
 		vs := valSet.Copy()
 		vs.Validators[idx].PubKey = panicPubKey{vs.Validators[idx].PubKey}
 		for _, f := range []func() error{
@@ -159,4 +160,48 @@ func TestParallelSigVerifyPanicParity(t *testing.T) {
 			require.Equal(t, idx == 0, want.panic != "", "idx %d: %+v", idx, want)
 		}
 	}
+}
+
+// countingPubKey counts VerifySignature calls.
+type countingPubKey struct {
+	crypto.PubKey
+	n *atomic.Int64
+}
+
+func (k countingPubKey) VerifySignature(msg, sig []byte) bool {
+	k.n.Add(1)
+	return k.PubKey.VerifySignature(msg, sig)
+}
+
+// TestParallelSigVerifyTrustingNoAmplification checks that the pre-pass does
+// not verify more signatures than the sequential path can reach: a commit
+// whose entries all name the same trusted validator must cost one
+// verification, not one per entry.
+func TestParallelSigVerifyTrustingNoAmplification(t *testing.T) {
+	var calls atomic.Int64
+	pv := NewMockPV()
+	pk, err := pv.GetPubKey()
+	require.NoError(t, err)
+	vals := NewValidatorSet([]*Validator{NewValidator(pk, 10)})
+	vals.Validators[0].PubKey = countingPubKey{pk, &calls}
+	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	sigs := make([]CommitSig, 5000)
+	for i := range sigs {
+		sigs[i] = CommitSig{BlockIDFlag: BlockIDFlagCommit, ValidatorAddress: pk.Address(),
+			Timestamp: time.Unix(1700000000, 0), Signature: make([]byte, 64)}
+	}
+	commit := &Commit{Height: 1, BlockID: blockID, Signatures: sigs}
+	f := func() error {
+		return vals.VerifyCommitLightTrusting("test_chain_id", commit, cmtmath.Fraction{Numerator: 1, Denominator: 3})
+	}
+
+	setParallelSigVerify(t, false)
+	calls.Store(0)
+	want := runLightVerify(f)
+	stock := calls.Load()
+	setParallelSigVerify(t, true)
+	calls.Store(0)
+	got := runLightVerify(f)
+	require.Equal(t, want, got)
+	require.LessOrEqual(t, calls.Load(), stock+int64(vals.Size()), "parallel %d vs stock %d", calls.Load(), stock)
 }

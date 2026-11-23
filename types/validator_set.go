@@ -797,13 +797,17 @@ func (vals *ValidatorSet) verifyCommitLightInternal(
 	votingPowerNeeded := vals.TotalVotingPower() * 2 / 3
 	var preVerified []sigCheck
 	if parallelSigVerify {
-		preVerified = parallelVerify(len(commit.Signatures), func(idx int) bool {
-			cs := commit.Signatures[idx]
+		// len(commit.Signatures) == vals.Size(), so this is bounded by the set.
+		var idxs []int
+		for idx, cs := range commit.Signatures {
 			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
-				return false
+				continue
 			}
+			idxs = append(idxs, idx)
+		}
+		preVerified = parallelVerify(len(commit.Signatures), idxs, func(idx int) bool {
 			//nolint:gosec
-			return vals.Validators[idx].PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
+			return vals.Validators[idx].PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), commit.Signatures[idx].Signature)
 		})
 	}
 	for idx, commitSig := range commit.Signatures {
@@ -902,17 +906,34 @@ func (vals *ValidatorSet) verifyCommitLightTrustingInternal(
 
 	var preVerified []sigCheck
 	if parallelSigVerify {
-		preVerified = parallelVerify(len(commit.Signatures), func(idx int) bool {
-			cs := commit.Signatures[idx]
+		// len(commit.Signatures) is not bounded by the trusted set, so only
+		// schedule entries the sequential loop can reach: each maps to a
+		// distinct trusted validator, up to the first duplicate (where the
+		// loop returns its double-vote error). This bounds the work by
+		// vals.Size().
+		var (
+			idxs []int
+			seen = make(map[int32]struct{})
+		)
+		for idx, cs := range commit.Signatures {
 			if (!countAllSignatures && !cs.ForBlock()) || (countAllSignatures && cs.Absent()) {
-				return false
+				continue
 			}
-			_, v := vals.GetByAddress(cs.ValidatorAddress)
-			if v == nil {
-				return false
+			valIdx, val := vals.GetByAddress(cs.ValidatorAddress)
+			if val == nil {
+				continue
 			}
+			if _, dup := seen[valIdx]; dup {
+				break
+			}
+			seen[valIdx] = struct{}{}
+			idxs = append(idxs, idx)
+		}
+		preVerified = parallelVerify(len(commit.Signatures), idxs, func(idx int) bool {
+			cs := commit.Signatures[idx]
+			_, val := vals.GetByAddress(cs.ValidatorAddress)
 			//nolint:gosec
-			return v.PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
+			return val.PubKey.VerifySignature(commit.VoteSignBytes(chainID, int32(idx)), cs.Signature)
 		})
 	}
 

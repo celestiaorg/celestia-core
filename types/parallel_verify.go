@@ -3,6 +3,7 @@ package types
 import (
 	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
 // Light-client commit verification (VerifyCommitLight*, used by the IBC
@@ -27,22 +28,26 @@ const (
 	sigInvalid
 )
 
-// parallelVerify runs f(i) for i in [0, n) on up to min(GOMAXPROCS, 16) workers.
-func parallelVerify(n int, f func(i int) bool) []sigCheck {
+// minParallelSigs is the fewest scheduled signatures worth spreading over
+// goroutines; below it the sequential loop verifies them itself.
+const minParallelSigs = 8
+
+// parallelVerify runs f(i) for each i in idxs on up to min(GOMAXPROCS, 16)
+// workers and returns the results indexed by i in [0, n). Indices that are not
+// scheduled, or whose check panicked, stay sigUnchecked. It returns nil when
+// fewer than minParallelSigs indices are scheduled.
+func parallelVerify(n int, idxs []int, f func(i int) bool) []sigCheck {
+	if len(idxs) < minParallelSigs {
+		return nil
+	}
 	out := make([]sigCheck, n)
 	workers := runtime.GOMAXPROCS(0)
 	if workers > 16 {
 		workers = 16
 	}
-	if workers > n {
-		workers = n
+	if workers > len(idxs) {
+		workers = len(idxs)
 	}
-	var wg sync.WaitGroup
-	next := make(chan int, n)
-	for i := 0; i < n; i++ {
-		next <- i
-	}
-	close(next)
 	check := func(i int) {
 		defer func() {
 			if recover() != nil {
@@ -55,12 +60,20 @@ func parallelVerify(n int, f func(i int) bool) []sigCheck {
 			out[i] = sigInvalid
 		}
 	}
+	var (
+		wg   sync.WaitGroup
+		next atomic.Int64
+	)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range next {
-				check(i)
+			for {
+				k := int(next.Add(1) - 1)
+				if k >= len(idxs) {
+					return
+				}
+				check(idxs[k])
 			}
 		}()
 	}
