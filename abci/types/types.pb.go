@@ -3846,7 +3846,8 @@ type TimeoutInfo struct {
 	TimeoutPrecommitDelta   time.Duration `protobuf:"bytes,6,opt,name=timeout_precommit_delta,json=timeoutPrecommitDelta,proto3,stdduration" json:"timeout_precommit_delta"`
 	TimeoutCommit           time.Duration `protobuf:"bytes,7,opt,name=timeout_commit,json=timeoutCommit,proto3,stdduration" json:"timeout_commit"`
 	DelayedPrecommitTimeout time.Duration `protobuf:"bytes,8,opt,name=delayed_precommit_timeout,json=delayedPrecommitTimeout,proto3,stdduration" json:"delayed_precommit_timeout"`
-	// Floor on the interval between the earliest start times of consecutive heights; 0 disables it.
+	// Floor on the interval between the earliest start times of consecutive heights (except once
+	// after a node resets ahead of that schedule); 0 disables it.
 	DynamicTimeoutCommit time.Duration `protobuf:"bytes,9,opt,name=dynamic_timeout_commit,json=dynamicTimeoutCommit,proto3,stdduration" json:"dynamic_timeout_commit"`
 }
 
