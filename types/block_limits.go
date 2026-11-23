@@ -9,7 +9,8 @@ const (
 	// signature, and v1 mainnet blocks were under 2 MB.
 	MaxBlockTxsCeiling = DefaultMaxBlockSizeBytes/64 + 1
 
-	// MaxBlockTxs matches app v11's combined SDK, PFB and PFF message capacity.
+	// MaxBlockTxs bounds the txs in a block from BlockTxLimitAppVersion. It equals
+	// app v11's SDK + PFB + PFF message caps; from v12 the app trims PFFs to fit it.
 	MaxBlockTxs = 1000
 )
 
