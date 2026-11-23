@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 
+	"github.com/cockroachdb/pebble"
 	dbm "github.com/cometbft/cometbft-db"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
@@ -29,6 +31,19 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	path := ctx.Path
 	if path == "" {
 		path = ctx.Config.DBDir()
+	}
+	if ctx.ID == "blockstore" {
+		// Blockstore memtable options: SaveBlock writes a whole block as one batch.
+		memtable := ctx.Config.Storage.BlockstoreMemtableSizeMB << 20
+		switch dbType {
+		case dbm.GoLevelDBBackend:
+			return dbm.NewGoLevelDBWithOpts(ctx.ID, path, &opt.Options{
+				WriteBuffer:                  memtable,
+				DisableLargeBatchTransaction: ctx.Config.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction,
+			})
+		case dbm.PebbleDBBackend:
+			return dbm.NewPebbleDBWithOpts(ctx.ID, path, &pebble.Options{MemTableSize: uint64(memtable)})
+		}
 	}
 	return dbm.NewDB(ctx.ID, dbType, path)
 }

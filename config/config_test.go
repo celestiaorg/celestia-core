@@ -345,3 +345,12 @@ func TestBlockstoreDir(t *testing.T) {
 	cfg.BlockstorePath = "/opt/blockstore"
 	assert.Equal(t, "/opt/blockstore", cfg.BlockstoreDir())
 }
+
+func TestStorageConfigValidateBasic(t *testing.T) {
+	cfg := config.DefaultStorageConfig()
+	require.NoError(t, cfg.ValidateBasic())
+	for size, ok := range map[int]bool{-1: false, 0: true, 256: true, 257: false} {
+		cfg.BlockstoreMemtableSizeMB = size
+		require.Equal(t, ok, cfg.ValidateBasic() == nil, "size %d", size)
+	}
+}

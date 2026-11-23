@@ -1,10 +1,17 @@
 # Runs the generated E2E testnets nightly. The generator builds random
-# testnets that kill, pause, disconnect and restart nodes. Every node runs the
+# testnets that kill, pause, disconnect and restart nodes, and add latency
+# to or partition their network with tc netem. Every node runs the
 # local build. e2e-manual-multiversion.yml runs the same testnets against the
 # latest release, but only on demand.
 #
-# A failing testnet's container logs are printed to the job log by
-# run-multiple.sh. Reproduce one group locally from test/e2e with:
+# Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
+# which watches this workflow by name.
+#
+# A failure can describe an exploitable bug, and this repository's logs are
+# public. As in fuzz-nightly.yml, each job prints only PASS or FAIL, and on
+# main files a Linear issue holding the output of run-multiple.sh: the failing
+# manifests and their container logs. Reproduce one group locally from
+# test/e2e with:
 #   make docker generator runner
 #   ./build/generator -g 5 -d networks/nightly/ -p
 #   ./run-multiple.sh networks/nightly/*-group00-*.toml
@@ -42,18 +49,72 @@ jobs:
         # Run make jobs in parallel, since we can't run steps in parallel.
         run: make -j2 docker generator runner
 
+      # The latency and partition perturbations need the host's netem module.
+      - name: Load the netem kernel module
+        run: |
+          sudo modprobe sch_netem || {
+            sudo apt-get -qq update &&
+              sudo apt-get -qq install -y "linux-modules-extra-$(uname -r)" &&
+              sudo modprobe sch_netem
+          }
+
       - name: Generate testnets
         if: matrix.group != '05'
         working-directory: test/e2e
         # When changing -g, also change the matrix groups above.
         run: ./build/generator -g 5 -d networks/nightly/ -p
 
+      # Group 05 runs the regression testnets and the netem testnet. The output
+      # stays in a file under runner.temp and is sent only to Linear. A hung
+      # testnet is stopped before the job timeout, so it is reported as a
+      # failure instead of a cancelled run.
       - name: Run p2p testnets (${{ matrix.group }})
-        if: matrix.group != '05'
         working-directory: test/e2e
-        run: ./run-multiple.sh networks/nightly/*-group${{ matrix.group }}-*.toml
+        env:
+          GROUP: ${{ matrix.group }}
+          LOG_DIR: ${{ runner.temp }}/e2e
+        run: |
+          if [ "$GROUP" = 05 ]; then
+            manifests=(networks_regressions/*.toml networks/netem.toml)
+          else
+            manifests=(networks/nightly/*-group"$GROUP"-*.toml)
+          fi
+          target="group$GROUP"
+          mkdir -p "$LOG_DIR"
+          rc=0
+          timeout 45m ./run-multiple.sh "${manifests[@]}" >"$LOG_DIR/$target.log" 2>&1 || rc=$?
+          if [ "$rc" = 0 ]; then
+            echo "PASS $target"
+          else
+            if [ "$rc" = 124 ]; then
+              # timeout stopped run-multiple.sh before it could dump the
+              # container logs of the hung testnet, so collect them here.
+              {
+                echo "==> Timed out after 45m. Container logs of the hung testnet:"
+                for c in $(docker ps -aq); do
+                  echo "==> $(docker inspect -f '{{.Name}}' "$c")"
+                  docker logs --tail 5000 "$c" 2>&1 || true
+                done
+              } >>"$LOG_DIR/$target.log"
+            fi
+            echo "FAIL $target (output withheld; see the Linear issue)"
+            echo "2 test/e2e $target" >"$LOG_DIR/failed.txt"
+            exit 1
+          fi
 
-      - name: Run p2p testnets (regression)
-        if: matrix.group == '05'
-        working-directory: test/e2e
-        run: ./run-multiple.sh networks_regressions/*.toml
+      - name: File Linear issue for failing group
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          LOG_DIR: ${{ runner.temp }}/e2e
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          TITLE_PREFIX: Nightly celestia-core e2e failure
+          KIND: E2E testnet group
+          REPRODUCE: >-
+            The output below holds each failing manifest. Save one under
+            test/e2e/networks/ and, from test/e2e, run
+            `make docker runner && ./run-multiple.sh networks/<manifest>.toml`.
+        run: python3 .github/scripts/report-fuzz-failures.py
