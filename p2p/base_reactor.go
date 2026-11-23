@@ -243,9 +243,8 @@ func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	}
 }
 
-// TryQueueEnvelope attempts to queue an unprocessed envelope and reports
-// whether it was queued. If the queue is full, it drops the envelope without
-// unmarshalling it.
+// TryQueueEnvelope queues an envelope without blocking. It returns false if
+// the queue is full and the envelope was dropped.
 func (br *BaseReactor) TryQueueEnvelope(e UnprocessedEnvelope) bool {
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)

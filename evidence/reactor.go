@@ -26,17 +26,14 @@ const (
 	broadcastEvidenceIntervalS = 10
 	// If a message fails wait this much before sending it again
 	peerRetryMessageIntervalMS = 100
-	// maxWaitingMessagesPerPeer and maxWaitingBytesPerPeer bound what one
-	// peer can have waiting in the reactor's message queue. An honest peer
-	// sends each piece of pending evidence in a message of its own, a few
-	// hundred bytes for a duplicate vote, so it stays well within both.
+	// How much one peer can have waiting in the reactor's message queue.
+	// Honest peers send small messages and stay well within both limits.
 	maxWaitingMessagesPerPeer = 16
 	maxWaitingBytesPerPeer    = maxMsgSize
-	// defaultMaxPeers is the default peer limit: 40 inbound plus 10 outbound.
+	// The default peer limit: 40 inbound plus 10 outbound.
 	defaultMaxPeers = 50
-	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	// It has room for what every peer can have waiting with the default
-	// peer limit.
+	// ReactorIncomingMessageQueueSize is the size of the reactor's message
+	// queue. It fits every peer's waiting messages at the default peer limit.
 	ReactorIncomingMessageQueueSize = defaultMaxPeers * maxWaitingMessagesPerPeer
 )
 
@@ -45,8 +42,7 @@ type Reactor struct {
 	p2p.BaseReactor
 	evpool   *Pool
 	eventBus *types.EventBus
-	// waiting tracks the messages each peer has waiting in the incoming
-	// queue.
+	// waiting tracks the messages each peer has in the incoming queue.
 	waiting *waitingMessages
 }
 
@@ -63,15 +59,9 @@ func NewReactor(evpool *Pool) *Reactor {
 	return evR
 }
 
-// queueWithinPeerBudget queues a message without blocking. A blocking queue
-// stalls the sending peer's whole connection while another peer's message is
-// being processed.
-//
-// Each peer has a budget of messages and bytes that can wait in the queue, so
-// that one peer cannot fill the queue and crowd out the others. A message is
-// dropped, without being decoded, if it does not fit its peer's budget or if
-// the queue is full. Dropped evidence is sent again by the peer's broadcast
-// routine.
+// queueWithinPeerBudget queues a message, or drops it if the peer is over its
+// budget or the queue is full. It never blocks, because blocking would stall
+// the peer's whole connection. Peers send dropped evidence again.
 func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 	peerID := e.Src.ID()
 	messageSize := len(e.Message)
@@ -85,16 +75,16 @@ func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 
 // RemovePeer implements Reactor.
 func (evR *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
-	// A message that fails to decode never reaches Receive. It stops the
-	// peer instead, so forget the peer's waiting messages here.
+	// Forget the peer's waiting messages. Receive does not do it for a
+	// message that fails to decode.
 	evR.waiting.removePeer(peer.ID())
 }
 
-// waitingMessages tracks, for each peer, the sizes of the messages it has
-// waiting in the reactor's incoming queue. It is safe for concurrent use.
+// waitingMessages tracks the sizes of the messages each peer has in the
+// reactor's incoming queue. It is safe for concurrent use.
 type waitingMessages struct {
 	mtx sync.Mutex
-	// sizesByPeer holds the size of each waiting message, oldest first.
+	// Message sizes, oldest first.
 	sizesByPeer map[p2p.ID][]int
 }
 
@@ -102,9 +92,8 @@ func newWaitingMessages() *waitingMessages {
 	return &waitingMessages{sizesByPeer: make(map[p2p.ID][]int)}
 }
 
-// add records a message of the given size for the peer and reports whether it
-// fits the peer's budget. A peer with nothing waiting can always add a
-// message.
+// add records a message for the peer. It returns false if the message does
+// not fit the peer's budget.
 func (w *waitingMessages) add(peerID p2p.ID, messageSize int) bool {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
@@ -124,8 +113,7 @@ func (w *waitingMessages) add(peerID p2p.ID, messageSize int) bool {
 	return true
 }
 
-// removeOldest forgets the peer's oldest waiting message. Messages of one peer
-// leave the queue in the order they entered it.
+// removeOldest forgets the peer's oldest waiting message.
 func (w *waitingMessages) removeOldest(peerID p2p.ID) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
@@ -138,7 +126,7 @@ func (w *waitingMessages) removeOldest(peerID p2p.ID) {
 	w.sizesByPeer[peerID] = sizes[1:]
 }
 
-// removeNewest forgets the message the peer added last.
+// removeNewest forgets the peer's newest waiting message.
 func (w *waitingMessages) removeNewest(peerID p2p.ID) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
@@ -190,8 +178,7 @@ func (evR *Reactor) AddPeer(peer p2p.Peer) {
 // Receive implements Reactor.
 // It adds any received evidence to the evpool.
 func (evR *Reactor) Receive(e p2p.Envelope) {
-	// The message has left the queue, so it no longer counts against its
-	// peer's budget.
+	// The message has left the queue, so free its place in the peer's budget.
 	evR.waiting.removeOldest(e.Src.ID())
 
 	evis, err := evidenceListFromProto(e.Message)
