@@ -61,7 +61,8 @@ func stalledEvidenceReactor(t *testing.T) (*evidence.Reactor, *blockingLogger, [
 	// blocking logger on the pool afterwards.
 	logger := &blockingLogger{Logger: log.NewNopLogger(), unblock: make(chan struct{})}
 	pool.SetLogger(logger)
-	t.Cleanup(reactor.BaseReactor.OnStop)
+	require.NoError(t, reactor.Start())
+	t.Cleanup(func() { require.NoError(t, reactor.Stop()) })
 	t.Cleanup(logger.release)
 
 	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(

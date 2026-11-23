@@ -272,6 +272,9 @@ func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // it was queued. An envelope is dropped if the queue is full, or if it fails
 // to decode, in which case the error is returned.
 func (br *BaseReactor) TryQueueEnvelope(e UnprocessedEnvelope) (bool, error) {
+	if br.ctx.Err() != nil {
+		return false, nil
+	}
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 		return false, nil
