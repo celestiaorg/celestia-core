@@ -21,6 +21,9 @@ type Envelope struct {
 	Src       Peer          // sender (empty if outbound)
 	Message   proto.Message // message payload
 	ChannelID byte
+	// Lazy outbound messages never trigger a low-latency flush; they leave with
+	// the next one or with the flush throttle. Local only, not on the wire.
+	Lazy bool
 }
 
 // Unwrapper is a Protobuf message that can contain a variety of inner messages

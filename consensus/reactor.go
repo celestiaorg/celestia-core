@@ -611,6 +611,9 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 	conR.Switch.Broadcast(p2p.Envelope{
 		ChannelID: StateChannel,
 		Message:   msg,
+		// HasVote only spares peers duplicate votes, so it rides with the next
+		// low-latency flush (or the flush throttle) instead of arming its own.
+		Lazy: true,
 	})
 	schema.WriteConsensusState(
 		conR.traceClient,

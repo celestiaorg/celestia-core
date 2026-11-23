@@ -271,6 +271,68 @@ func TestReactorCreatesBlockWhenEmptyBlocksFalse(t *testing.T) {
 	})
 }
 
+// recordingPeer records the envelopes sent to it.
+type recordingPeer struct {
+	*p2pmock.Peer
+	mtx  sync.Mutex
+	sent []p2p.Envelope
+}
+
+func (p *recordingPeer) Send(e p2p.Envelope) bool    { return p.record(e) }
+func (p *recordingPeer) TrySend(e p2p.Envelope) bool { return p.record(e) }
+
+func (p *recordingPeer) record(e p2p.Envelope) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	p.sent = append(p.sent, e)
+	return true
+}
+
+func (p *recordingPeer) envelopes() []p2p.Envelope {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	return append([]p2p.Envelope(nil), p.sent...)
+}
+
+// Only HasVote is sent lazily; votes and the other StateChannel messages still
+// arm the low-latency flush.
+func TestReactorOnlyHasVoteIsLazy(t *testing.T) {
+	N := 1
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	defer cleanup()
+	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
+	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
+
+	reactor := reactors[0]
+	peer := &recordingPeer{Peer: p2pmock.NewPeer(nil)}
+	defer peer.Stop() //nolint:errcheck
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+	// a peer at our height is sent the last commit's votes once we move on
+	ps := peer.Get(types.PeerStateKey).(*PeerState)
+	ps.ApplyNewRoundStepMessage(&NewRoundStepMessage{Height: reactor.getRoundState().Height, Step: cstypes.RoundStepNewHeight})
+	p2p.AddPeerToReactorPeerSet(reactor.Switch, reactor, peer)
+	reactor.AddPeer(peer)
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-blocksSubs[0].Out():
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for a block")
+		}
+	}
+
+	counts := make(map[string]int)
+	for _, e := range peer.envelopes() {
+		_, isHasVote := e.Message.(*cmtcons.HasVote)
+		require.Equal(t, isHasVote, e.Lazy, "%T on channel %#x", e.Message, e.ChannelID)
+		counts[fmt.Sprintf("%T", e.Message)]++
+	}
+	require.Positive(t, counts["*consensus.HasVote"], counts)
+	require.Positive(t, counts["*consensus.NewRoundStep"], counts)
+	require.Positive(t, counts["*consensus.Vote"], counts)
+}
+
 func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 	N := 1
 	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
