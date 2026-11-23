@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p/conn"
 	p2pproto "github.com/cometbft/cometbft/proto/tendermint/p2p"
@@ -56,7 +56,7 @@ func (rawBytes) String() string             { return "raw" }
 func (rawBytes) ProtoMessage()              {}
 
 func TestBaseReactorCopyDisconnectsOnDecodeError(t *testing.T) {
-	sws := MakeConnectedSwitches(config.DefaultP2PConfig(), 2, func(_ int, sw *Switch) *Switch {
+	sws := MakeConnectedSwitches(cmtcfg.DefaultP2PConfig(), 2, func(_ int, sw *Switch) *Switch {
 		sw.AddReactor("copied", newCopiedReactor())
 		return sw
 	}, Connect2Switches)
