@@ -63,6 +63,13 @@ type PeerState struct {
 	// These have NOT been verified via the consensus reactor's verification
 	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
 	unverifiedProposals map[int64]*proptypes.CompactBlock
+
+	// storedPartsBudget limits how many block parts this node loads from the
+	// block store per second to serve this peer's catchup wants. It keeps one
+	// peer from using up the budget that all peers share. It starts with
+	// StoredPartsPerPeerInitial tokens, below the burst, so reconnecting, or
+	// connecting with a new node ID, gives no full burst.
+	storedPartsBudget *tokenBucket
 }
 
 type partData struct {
@@ -87,6 +94,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
+		storedPartsBudget:   newTokenBucketWithTokens(StoredPartsPerPeerPerSecond, float64(StoredPartsPerPeerBurst), StoredPartsPerPeerInitial),
 	}
 }
 
@@ -491,6 +499,8 @@ type partState struct {
 	requests *bits.BitArray
 	// requestedAt is when requests were last added.
 	requestedAt time.Time
+	// receivedAt is when a part last arrived from the peer.
+	receivedAt time.Time
 }
 
 // newpartState initializes and returns a new partState
@@ -527,8 +537,10 @@ func (p *partState) setWant(part int, wants bool) {
 }
 
 // ExpireRequests clears the requests for a given height and round if none
-// were added within timeout.
-func (d *PeerState) ExpireRequests(height int64, round int32, timeout time.Duration) {
+// were added within timeout, or if the peer has sent nothing for idleTimeout
+// since the last request. A peer that refuses a want sends nothing, so the
+// next retry asks again instead of waiting for timeout.
+func (d *PeerState) ExpireRequests(height int64, round int32, timeout, idleTimeout time.Duration) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	hdata, has := d.state[height]
@@ -539,7 +551,21 @@ func (d *PeerState) ExpireRequests(height int64, round int32, timeout time.Durat
 	if !has || rdata.requests.IsEmpty() {
 		return
 	}
-	if time.Since(rdata.requestedAt) >= timeout {
+	lastActivity := rdata.requestedAt
+	if rdata.receivedAt.After(lastActivity) {
+		lastActivity = rdata.receivedAt
+	}
+	if time.Since(rdata.requestedAt) >= timeout || time.Since(lastActivity) >= idleTimeout {
 		rdata.requests = bits.NewBitArray(rdata.requests.Size())
+	}
+}
+
+// MarkPartReceived records that a part for height and round arrived from
+// the peer.
+func (d *PeerState) MarkPartReceived(height int64, round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if rdata, has := d.state[height][round]; has {
+		rdata.receivedAt = time.Now()
 	}
 }

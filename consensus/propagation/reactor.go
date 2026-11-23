@@ -46,9 +46,31 @@ const (
 	// per part this is about 128 MiB/s. The burst is one maximum-size block.
 	StoredPartsPerSecond = 2000
 
+	// StoredPartsPerPeerPerSecond is how many block parts per second this node
+	// loads from the block store to serve one peer's catchup wants. It is a
+	// quarter of StoredPartsPerSecond, so one peer cannot use up the shared
+	// budget, and two serving peers match the catchup speed without it.
+	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 4
+
+	// StoredPartsPerPeerInitial is the per-peer budget of a new peer.
+	StoredPartsPerPeerInitial = StoredPartsPerPeerPerSecond
+
 	// RequestTimeout is how long a catchup request to a peer stays outstanding
 	// before it can be sent to that peer again.
 	RequestTimeout = 2 * RetryTime
+
+	// RequestIdleTimeout is how long a peer may send nothing before its
+	// outstanding catchup requests expire.
+	RequestIdleTimeout = RetryTime / 2
+)
+
+// StoredPartsPerPeerBurst is the burst of the per-peer budget: what the
+// per-peer rate refills in a full catchup retry cycle, but at most the shared
+// burst less StoredPartsPerPeerInitial. One peer then cannot use up the shared
+// burst: another peer can still get its initial share at once.
+var StoredPartsPerPeerBurst = min(
+	int(StoredPartsPerPeerPerSecond*(RequestTimeout+RetryTime)/time.Second),
+	int(types.MaxBlockPartsCount)-StoredPartsPerPeerInitial,
 )
 
 type Reactor struct {
@@ -76,6 +98,9 @@ type Reactor struct {
 	// requestTimeout is how long catchup requests to a peer stay outstanding
 	// before retryWants may send them to that peer again.
 	requestTimeout time.Duration
+	// requestIdleTimeout is how long a peer may send nothing for a catchup
+	// request before retryWants may send it to that peer again.
+	requestIdleTimeout time.Duration
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -125,8 +150,9 @@ func NewReactor(
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 
-		storedPartsBudget: newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
-		requestTimeout:    RequestTimeout,
+		storedPartsBudget:  newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
+		requestTimeout:     RequestTimeout,
+		requestIdleTimeout: RequestIdleTimeout,
 	}
 	for _, option := range options {
 		option(reactor)

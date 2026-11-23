@@ -26,6 +26,14 @@ func newTokenBucket(rate, burst float64) *tokenBucket {
 	}
 }
 
+// newTokenBucketWithTokens returns a token bucket that starts with tokens
+// tokens, at most burst.
+func newTokenBucketWithTokens(rate, burst, tokens float64) *tokenBucket {
+	b := newTokenBucket(rate, burst)
+	b.tokens = min(tokens, burst)
+	return b
+}
+
 // allow takes one token and reports whether one was available.
 func (b *tokenBucket) allow() bool {
 	b.mtx.Lock()

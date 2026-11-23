@@ -487,6 +487,12 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		if remaining <= 0 {
 			break
 		}
+		// Take the peer's own token first, so that one peer cannot use up
+		// the budget that all peers share.
+		if !p.storedPartsBudget.allow() {
+			blockProp.Logger.Debug("peer stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
 		if !blockProp.storedPartsBudget.allow() {
 			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
 			break
@@ -507,6 +513,9 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			},
 		}
 		if !p.peer.TrySend(e) {
+			// Keep the tokens: the part was read from the store. The peer's
+			// budget keeps a peer that does not read from draining the
+			// shared budget.
 			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
 			break
 		}
@@ -538,11 +547,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
+	if p != nil {
+		// The peer is still answering, so retryWants keeps its requests.
+		p.MarkPartReceived(part.Height, part.Round)
+	}
 
 	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
-
 	// todo: add these defensive checks in a better way
 	if cb == nil {
 		return
