@@ -107,6 +107,17 @@ func TestConcurrentRead(t *testing.T) {
 	}
 }
 
+func TestSecretConnectionWriteFailedFlush(t *testing.T) {
+	// a small write fails at the final flush, one larger than the buffer inside the loop
+	for _, size := range []int{5, 2 * defaultWriteBufferSize} {
+		fooSecConn, barSecConn := makeSecretConnPair(t)
+		require.NoError(t, barSecConn.Close())
+		n, err := fooSecConn.Write(make([]byte, size))
+		require.Error(t, err)
+		require.Zero(t, n, "size %d", size)
+	}
+}
+
 func TestSecretConnectionReadWrite(t *testing.T) {
 	fooConn, barConn := makeKVStoreConnPair()
 	fooWrites, barWrites := []string{}, []string{}
