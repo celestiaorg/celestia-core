@@ -227,7 +227,7 @@ func TestLateReplyAfterRequestExpiredIsAccepted(t *testing.T) {
 	// we asked other for part 0, and the request expired before it replied
 	otherPeer := receiver.getPeer(other.self)
 	otherPeer.AddRequests(10, 0, createBitArray(int(ps.Total())*2, []int{0}))
-	otherPeer.ExpireRequests(10, 0, 0)
+	otherPeer.ExpireRequests(10, 0, 0, 0)
 
 	part := ps.GetPart(0)
 	receiver.handleRecoveryPart(other.self, &proptypes.RecoveryPart{Height: 10, Round: 0, Index: part.Index, Data: part.Bytes, Proof: &part.Proof})

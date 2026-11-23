@@ -195,10 +195,6 @@ func TestHandleWantsTracksOnlyCachedRounds(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return n1.getPeer(n2.self) != nil && n2.getPeer(n1.self) != nil
 	}, 5*time.Second, 10*time.Millisecond)
-	// The wants below use up n2's stored parts budget on n1. Start it full,
-	// as for a peer that has been connected for a while, so n2 can still
-	// catch up at the end.
-	n1.getPeer(n2.self).storedPartsBudget.fill()
 
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })

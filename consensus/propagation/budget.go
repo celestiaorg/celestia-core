@@ -26,11 +26,11 @@ func newTokenBucket(rate, burst float64) *tokenBucket {
 	}
 }
 
-// newEmptyTokenBucket returns a token bucket that starts with no tokens and
-// fills up at rate tokens per second.
-func newEmptyTokenBucket(rate, burst float64) *tokenBucket {
+// newTokenBucketWithTokens returns a token bucket that starts with tokens
+// tokens, at most burst.
+func newTokenBucketWithTokens(rate, burst, tokens float64) *tokenBucket {
 	b := newTokenBucket(rate, burst)
-	b.tokens = 0
+	b.tokens = min(tokens, burst)
 	return b
 }
 
@@ -53,15 +53,4 @@ func (b *tokenBucket) allow() bool {
 	}
 	b.tokens--
 	return true
-}
-
-// refund gives back one token taken by allow, up to the burst size.
-func (b *tokenBucket) refund() {
-	b.mtx.Lock()
-	defer b.mtx.Unlock()
-
-	b.tokens++
-	if b.tokens > b.burst {
-		b.tokens = b.burst
-	}
 }

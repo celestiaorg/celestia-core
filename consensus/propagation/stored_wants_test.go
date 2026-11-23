@@ -154,35 +154,110 @@ func TestPeerStateExpireRequests(t *testing.T) {
 	reqs.SetIndex(1, true)
 	ps.AddRequests(1, 0, reqs)
 
-	ps.ExpireRequests(1, 0, time.Hour)
+	ps.ExpireRequests(1, 0, time.Hour, time.Hour)
 	got, has := ps.GetRequests(1, 0)
 	require.True(t, has)
 	require.True(t, got.GetIndex(1), "recent requests are kept")
 
-	ps.ExpireRequests(1, 0, 0)
+	ps.ExpireRequests(1, 0, 0, time.Hour)
 	got, has = ps.GetRequests(1, 0)
 	require.True(t, has)
 	require.True(t, got.IsEmpty(), "old requests are cleared")
 
-	ps.ExpireRequests(2, 0, 0) // unknown height is a no-op
+	ps.ExpireRequests(2, 0, 0, 0) // unknown height is a no-op
+}
+
+// A request to a peer that has sent nothing for idleTimeout expires, so a
+// want the peer refused is sent again on the next retry tick. A peer that is
+// still sending parts keeps its requests.
+func TestPeerStateExpireIdleRequests(t *testing.T) {
+	ps := newPeerState(context.Background(), mock.NewPeer(net.IP{127, 0, 0, 1}), log.NewNopLogger())
+	request := func() {
+		reqs := bits.NewBitArray(4)
+		reqs.SetIndex(1, true)
+		ps.AddRequests(1, 0, reqs)
+	}
+	backdate := func(requested, received time.Duration) {
+		ps.mtx.Lock()
+		defer ps.mtx.Unlock()
+		ps.state[1][0].requestedAt = time.Now().Add(-requested)
+		if received > 0 {
+			ps.state[1][0].receivedAt = time.Now().Add(-received)
+		}
+	}
+	requested := func() bool {
+		got, has := ps.GetRequests(1, 0)
+		require.True(t, has)
+		return got.GetIndex(1)
+	}
+
+	request()
+	backdate(2*time.Second, 0)
+	ps.ExpireRequests(1, 0, time.Hour, time.Second)
+	require.False(t, requested(), "nothing received for idleTimeout: expired")
+
+	request()
+	backdate(2*time.Second, 100*time.Millisecond)
+	ps.ExpireRequests(1, 0, time.Hour, time.Second)
+	require.True(t, requested(), "a part arrived recently: kept")
+
+	request()
+	ps.ExpireRequests(1, 0, time.Hour, time.Second)
+	require.True(t, requested(), "a new request is kept")
+
+	ps.MarkPartReceived(1, 0)
+	ps.MarkPartReceived(2, 0) // unknown height is a no-op
+}
+
+// A want that the server refuses for lack of budget is sent again once the
+// peer goes quiet, long before the request would expire by age.
+func TestRefusedStoredWantIsRetriedWhenPeerGoesQuiet(t *testing.T) {
+	reactors, switches := testBlockPropReactors(2, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	server, client := reactors[0], reactors[1]
+	ps := storeTestBlock(t, server)
+
+	clientOnServer := server.getPeer(client.self)
+	require.NotNil(t, clientOnServer)
+	var budgetChecks atomic.Int64
+	b := clientOnServer.storedPartsBudget
+	b.mtx.Lock()
+	b.rate, b.tokens = 0, 0
+	b.now = func() time.Time {
+		budgetChecks.Add(1)
+		return time.Now()
+	}
+	b.mtx.Unlock()
+
+	// Only idleness can expire the request in this test.
+	client.requestTimeout = time.Hour
+	client.requestIdleTimeout = 100 * time.Millisecond
+	serverPeer := client.getPeer(server.self)
+	require.NotNil(t, serverPeer)
+	serverPeer.SetConsensusPeerState(&MockPeerStateEditor{height: storedTestHeight + 10})
+
+	psh := ps.Header()
+	client.AddCommitment(storedTestHeight, 0, &psh)
+	require.Eventually(t, func() bool {
+		return budgetChecks.Load() > 0
+	}, 2*time.Second, 10*time.Millisecond, "server refuses the first want")
+
+	b.mtx.Lock()
+	b.rate, b.burst, b.tokens = 10_000, 10_000, 10_000
+	b.mtx.Unlock()
+
+	require.Eventually(t, func() bool {
+		client.retryWants()
+		_, parts, has := client.GetProposal(storedTestHeight, 0)
+		return has && parts.IsComplete()
+	}, 3*time.Second, 100*time.Millisecond)
 }
 
 func addRecordingPeer(t *testing.T, r *Reactor, capacity int) *recordingPeer {
 	t.Helper()
 	rp := newRecordingPeer(capacity)
-	ps := newPeerState(context.Background(), rp, log.NewNopLogger())
-	ps.storedPartsBudget.fill()
-	r.setPeer(rp.ID(), ps)
+	r.setPeer(rp.ID(), newPeerState(context.Background(), rp, log.NewNopLogger()))
 	return rp
-}
-
-// fill fills the bucket up to its burst, as for a peer that has been
-// connected for a while.
-func (b *tokenBucket) fill() {
-	b.mtx.Lock()
-	defer b.mtx.Unlock()
-	b.tokens = b.burst
-	b.last = b.now()
 }
 
 func storedWant(total uint32, missing int32, indices ...int) *proptypes.WantParts {
@@ -349,29 +424,19 @@ func TestTokenBucket(t *testing.T) {
 		require.True(t, b.allow())
 	}
 	require.False(t, b.allow(), "refill is capped at the burst size")
-
-	b.refund()
-	require.True(t, b.allow(), "a refunded token can be taken again")
-	for i := 0; i < 5; i++ {
-		b.refund()
-	}
-	for i := 0; i < 3; i++ {
-		require.True(t, b.allow())
-	}
-	require.False(t, b.allow(), "refunds are capped at the burst size")
 }
 
 // One peer that floods stored-height wants must not use up the budget that
 // all peers share, or honest catchup peers get no parts.
 func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, 1000)
+	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total()))
 	attacker := addRecordingPeer(t, r, 1_000_000)
 	// No refill, so the test does not depend on how fast the loop runs.
-	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, StoredPartsPerPeerBurst)
+	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
 	honest := addRecordingPeer(t, r, 1_000_000)
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 2*StoredPartsPerPeerBurst/int(ps.Total()); i++ {
 		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
 	}
 	require.Len(t, attacker.sentParts(), StoredPartsPerPeerBurst, "one peer is capped below the shared budget")
@@ -385,12 +450,12 @@ func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 // The peer's budget then keeps it from draining the shared budget.
 func TestFullQueuePeerCannotDrainSharedBudget(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, 1000)
+	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total()))
 	full := addRecordingPeer(t, r, 0)
-	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, StoredPartsPerPeerBurst)
+	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
 	honest := addRecordingPeer(t, r, 1_000_000)
 
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 2*StoredPartsPerPeerBurst; i++ {
 		r.handleWants(full.ID(), storedWant(ps.Total(), 1, 0))
 	}
 	require.Empty(t, full.sentParts())
@@ -403,45 +468,22 @@ func TestFullQueuePeerCannotDrainSharedBudget(t *testing.T) {
 	require.Len(t, honest.sentParts(), int(ps.Total()))
 }
 
-// A part the shared budget refuses must not use up the peer's own budget.
-func TestGlobalBudgetDenialRefundsPeerBudget(t *testing.T) {
+// A new peer starts with a small budget, below the burst: enough to catch up
+// a typical block at once, but reconnecting gives less than a full burst.
+func TestNewPeerStartsWithSmallStoredPartsBudget(t *testing.T) {
+	require.Less(t, StoredPartsPerPeerInitial, StoredPartsPerPeerBurst)
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, 0)
-	rp := addRecordingPeer(t, r, 1_000_000)
-	peerBudget := newTokenBucket(0, 3)
-	r.getPeer(rp.ID()).storedPartsBudget = peerBudget
+	r.storedPartsBudget = newTokenBucket(0, 10_000)
 
-	for i := 0; i < 10; i++ {
-		r.handleWants(rp.ID(), storedWant(ps.Total(), 1, 0))
-	}
-	require.Empty(t, rp.sentParts())
-	for i := 0; i < 3; i++ {
-		require.True(t, peerBudget.allow(), "the peer's budget is intact")
-	}
-}
+	rp := newRecordingPeer(1_000_000)
+	peer := newPeerState(context.Background(), rp, log.NewNopLogger())
+	r.setPeer(rp.ID(), peer)
+	r.handleWants(rp.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, rp.sentParts(), int(ps.Total()), "a new peer catches up a typical block at once")
 
-// A peer's budget starts empty, so a peer that reconnects, or connects with a
-// new node ID, gets no burst and cannot use up the shared budget that way.
-func TestNewPeerStartsWithEmptyStoredPartsBudget(t *testing.T) {
-	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, 1000)
-
-	for i := 0; i < 10; i++ {
-		rp := newRecordingPeer(1_000_000)
-		r.setPeer(rp.ID(), newPeerState(context.Background(), rp, log.NewNopLogger()))
-		r.handleWants(rp.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-		require.Less(t, len(rp.sentParts()), int(ps.Total()), "a new peer gets no burst")
-	}
-}
-
-func TestEmptyTokenBucket(t *testing.T) {
-	now := time.Unix(0, 0)
-	b := newEmptyTokenBucket(10, 3)
-	b.now = func() time.Time { return now }
-	b.last = now
-
-	require.False(t, b.allow(), "starts with no tokens")
-	now = now.Add(100 * time.Millisecond)
-	require.True(t, b.allow(), "refills at the rate")
-	require.False(t, b.allow())
+	b := peer.storedPartsBudget
+	b.mtx.Lock()
+	tokens := b.tokens
+	b.mtx.Unlock()
+	require.Less(t, tokens, float64(StoredPartsPerPeerInitial), "the parts came from the initial balance")
 }

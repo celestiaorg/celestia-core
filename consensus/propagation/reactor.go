@@ -52,13 +52,20 @@ const (
 	// budget.
 	StoredPartsPerPeerPerSecond = StoredPartsPerSecond / 8
 
-	// StoredPartsPerPeerBurst is the burst of the per-peer budget: 512 parts,
-	// or 32 MiB. It is a quarter of the shared burst.
-	StoredPartsPerPeerBurst = 512
+	// StoredPartsPerPeerBurst is the burst of the per-peer budget. It covers
+	// what the per-peer rate refills in a full catchup retry cycle.
+	StoredPartsPerPeerBurst = int(StoredPartsPerPeerPerSecond * (RequestTimeout + RetryTime) / time.Second)
+
+	// StoredPartsPerPeerInitial is the per-peer budget of a new peer.
+	StoredPartsPerPeerInitial = StoredPartsPerPeerPerSecond
 
 	// RequestTimeout is how long a catchup request to a peer stays outstanding.
 	// A request expires before the second retry tick after it was sent.
 	RequestTimeout = 2*RetryTime - RetryTime/2
+
+	// RequestIdleTimeout is how long a peer may send nothing before its
+	// outstanding catchup requests expire.
+	RequestIdleTimeout = RetryTime / 2
 )
 
 type Reactor struct {
@@ -86,6 +93,9 @@ type Reactor struct {
 	// requestTimeout is how long catchup requests to a peer stay outstanding
 	// before retryWants may send them to that peer again.
 	requestTimeout time.Duration
+	// requestIdleTimeout is how long a peer may send nothing for a catchup
+	// request before retryWants may send it to that peer again.
+	requestIdleTimeout time.Duration
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -135,8 +145,9 @@ func NewReactor(
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 
-		storedPartsBudget: newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
-		requestTimeout:    RequestTimeout,
+		storedPartsBudget:  newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
+		requestTimeout:     RequestTimeout,
+		requestIdleTimeout: RequestIdleTimeout,
 	}
 	for _, option := range options {
 		option(reactor)

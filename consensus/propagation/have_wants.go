@@ -492,7 +492,6 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			break
 		}
 		if !blockProp.storedPartsBudget.allow() {
-			p.storedPartsBudget.refund()
 			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
@@ -565,6 +564,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	if p != nil && !blockProp.admitPart(p, part) {
 		return
+	}
+	if p != nil {
+		// The peer is still answering, so retryWants keeps its requests.
+		p.MarkPartReceived(part.Height, part.Round)
 	}
 
 	// todo: add these defensive checks in a better way
