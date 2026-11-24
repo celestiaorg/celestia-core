@@ -59,9 +59,10 @@ Celestia-specific ADRs live in `docs/celestia-architecture/`.
 
 Every PR that changes non-test Go code must be benchmarked against its base branch before it is opened or marked ready, to show it does not regress performance.
 
-- Run the benchmarks covering the changed packages on the base commit and on the PR head, on the same machine: `go test -run '^$' -bench . -benchmem -count 10 ./<pkg>/... > {base,head}.txt`, then `benchstat base.txt head.txt`.
-- Put the benchstat summary (or a short before/after table) in the PR description. Fix any statistically significant regression in time, bytes, or allocs per op, or justify it there.
-- If no benchmark exercises the changed path, say so in the PR description and state how performance was checked instead.
+- Write a benchmark that targets exactly the code path the PR changes, with realistic inputs; existing benchmarks rarely isolate the change.
+- Run that same benchmark on the base commit and on the PR head, on the same machine: `go test -run '^$' -bench <Name> -benchmem -count 10 ./<pkg> > {base,head}.txt`, then `benchstat base.txt head.txt`. If the benchmark calls new APIs, write it against the behaviour both versions share.
+- Keep the benchmark code out of the PR diff; put the benchstat summary (or a short before/after table) in the PR description and note that it was run out of tree.
+- Fix any statistically significant regression in time, bytes, or allocs per op, or justify it in the PR description.
 - Docs, CI, and test-only changes are exempt.
 
 ## Changelog
