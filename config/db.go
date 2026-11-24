@@ -35,6 +35,7 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	}
 	if dbType == dbm.PebbleDBBackend {
 		opts := &pebble.Options{}
+		ctx.Config.Storage.tunePebble(opts)
 		if ctx.Config.Storage.DBWALFsync != walfsync.ModeAlways {
 			opts.FS = walfsync.WrapFS(vfs.Default)
 		}
