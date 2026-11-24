@@ -990,7 +990,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.afterTimeoutCommit(cs.rs.CommitTime, cs.state.Timeouts)
 		}
 	}
-	cs.applyDynamicTimeoutCommit(prevStartTime, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
+	cs.applyDynamicTimeoutCommit(prevStartTime, state.LastBlockID, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -1022,20 +1022,32 @@ func (cs *State) updateToState(state sm.State) {
 	cs.newStep()
 }
 
-// applyDynamicTimeoutCommit raises StartTime to the previous deadline plus dynamic,
-// measured on the local clock, and never leaves it in the past. 0 is a no-op.
-func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time.Duration) {
+// applyDynamicTimeoutCommit makes the next height start at least dynamic after this height's
+// start, measured from the committed proposal's time if that is earlier (we started late), but
+// never more than dynamic/2 earlier. It never leaves StartTime in the past. 0 is a no-op.
+func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, lastBlockID types.BlockID, dynamic time.Duration) {
 	if dynamic <= 0 {
 		cs.pacingStarted = false
 		return
 	}
 	now := cmttime.Now()
-	// Without a paced anchor keep the legacy start: grid nodes start ~TimeoutCommit after
-	// the same commit, so anchoring on the commit would run one floor late (#3643).
+	// After a restart or our first commit there is no previous start to measure from: keep the
+	// legacy start, since measuring from the commit would start a whole interval late (#3643).
 	bootstrap := cs.rs.CommitTime.IsZero() || !cs.pacingStarted || prevStartTime.After(cs.rs.CommitTime)
 	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
-	if deadline := prevStartTime.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
-		cs.rs.StartTime = deadline
+	intervalStart, p := prevStartTime, cs.rs.Proposal
+	usesProposalTime := p != nil && !cs.replayMode && !p.BlockID.IsZero() &&
+		p.BlockID.Equals(lastBlockID) && p.Timestamp.Before(prevStartTime)
+	if usesProposalTime {
+		// If the committed proposal was stamped before we started, we were late: measure from its
+		// time instead, but at most dynamic/2 earlier, which bounds what a backdated stamp can gain.
+		intervalStart = p.Timestamp
+		if earliestAllowed := prevStartTime.Add(-dynamic / 2); intervalStart.Before(earliestAllowed) {
+			intervalStart = earliestAllowed
+		}
+	}
+	if nextStart := intervalStart.Add(dynamic); !bootstrap && nextStart.After(cs.rs.StartTime) {
+		cs.rs.StartTime = nextStart
 	}
 	wait := cs.rs.StartTime.Sub(now)
 	if wait <= 0 {
@@ -1050,6 +1062,9 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
 		if wait == 0 {
 			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+		}
+		if usesProposalTime {
+			cs.metrics.PacingBypass.With("reason", "proposal").Add(1)
 		}
 	}
 }

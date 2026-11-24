@@ -611,6 +611,9 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 	conR.Switch.Broadcast(p2p.Envelope{
 		ChannelID: StateChannel,
 		Message:   msg,
+		// HasVote only spares peers duplicate votes, so it rides with the next
+		// low-latency flush (or the flush throttle) instead of arming its own.
+		Lazy: true,
 	})
 	schema.WriteConsensusState(
 		conR.traceClient,
@@ -1050,6 +1053,21 @@ func (conR *Reactor) dynamicPacing() bool {
 	return conR.conS.dynamicTimeoutCommit() > 0
 }
 
+// sleepUnlessStopped waits d, returning false early if the peer or the
+// reactor stops. A plain sleep kept each disconnected peer, and its buffers,
+// alive for up to several PeerQueryMaj23SleepDuration periods.
+func (conR *Reactor) sleepUnlessStopped(peer p2p.Peer, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-peer.Quit():
+	case <-conR.Quit():
+	}
+	return false
+}
+
 // NOTE: `queryMaj23Routine` has a simple crude design since it only comes
 // into play for liveness when there's a signature DDoS attack happening.
 func (conR *Reactor) queryMaj23Routine(peer p2p.Peer, ps *PeerState) {
@@ -1085,7 +1103,9 @@ OUTER_LOOP:
 							schema.Upload,
 						)
 					}
-					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
+					if !conR.sleepUnlessStopped(peer, conR.conS.config.PeerQueryMaj23SleepDuration) {
+						return
+					}
 				}
 			}
 		}
@@ -1114,7 +1134,9 @@ OUTER_LOOP:
 							schema.Upload,
 						)
 					}
-					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
+					if !conR.sleepUnlessStopped(peer, conR.conS.config.PeerQueryMaj23SleepDuration) {
+						return
+					}
 				}
 			}
 		}
@@ -1144,7 +1166,9 @@ OUTER_LOOP:
 							schema.Upload,
 						)
 					}
-					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
+					if !conR.sleepUnlessStopped(peer, conR.conS.config.PeerQueryMaj23SleepDuration) {
+						return
+					}
 				}
 			}
 		}
@@ -1176,12 +1200,16 @@ OUTER_LOOP:
 							schema.Upload,
 						)
 					}
-					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
+					if !conR.sleepUnlessStopped(peer, conR.conS.config.PeerQueryMaj23SleepDuration) {
+						return
+					}
 				}
 			}
 		}
 
-		time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
+		if !conR.sleepUnlessStopped(peer, conR.conS.config.PeerQueryMaj23SleepDuration) {
+			return
+		}
 
 		continue OUTER_LOOP
 	}

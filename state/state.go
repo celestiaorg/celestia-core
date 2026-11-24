@@ -296,7 +296,7 @@ func (state State) MakeBlockWithoutPartset(
 	if height == state.InitialHeight {
 		timestamp = state.LastBlockTime // genesis time
 	} else {
-		ts, err := MedianTime(lastCommit, state.LastValidators)
+		ts, err := MedianTime(lastCommit, state.LastValidators, state.Version.Consensus.App)
 		if err != nil {
 			return nil, fmt.Errorf("error making block while calculating median time: %w", err)
 		}
@@ -315,11 +315,17 @@ func (state State) MakeBlockWithoutPartset(
 	return block, nil
 }
 
+// StrictMedianTimeAppVersion is the first app version whose block time uses
+// cmttime.WeightedMedian, which requires a strict majority of the commit power.
+// Earlier app versions use cmttime.LegacyWeightedMedian so that nodes on either
+// side of the upgrade agree on block time and historical blocks still validate.
+const StrictMedianTimeAppVersion uint64 = 12
+
 // MedianTime computes a median time for a given Commit (based on Timestamp field of votes messages) and the
 // corresponding validator set. The computed time is always between timestamps of
 // the votes sent by honest processes, i.e., a faulty processes can not arbitrarily increase or decrease the
-// computed value.
-func MedianTime(commit *types.Commit, validators *types.ValidatorSet) (time.Time, error) {
+// computed value. appVersion selects the median rule; see StrictMedianTimeAppVersion.
+func MedianTime(commit *types.Commit, validators *types.ValidatorSet, appVersion uint64) (time.Time, error) {
 	weightedTimes := make([]*cmttime.WeightedTime, len(commit.Signatures))
 	totalVotingPower := int64(0)
 
@@ -337,6 +343,9 @@ func MedianTime(commit *types.Commit, validators *types.ValidatorSet) (time.Time
 		weightedTimes[i] = cmttime.NewWeightedTime(commitSig.Timestamp, validator.VotingPower)
 	}
 
+	if appVersion < StrictMedianTimeAppVersion {
+		return cmttime.LegacyWeightedMedian(weightedTimes, totalVotingPower), nil
+	}
 	return cmttime.WeightedMedian(weightedTimes, totalVotingPower), nil
 }
 
