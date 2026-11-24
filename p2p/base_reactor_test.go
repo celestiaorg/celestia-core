@@ -144,20 +144,16 @@ func TestBaseReactorPanicRecovery(t *testing.T) {
 	peer2 := &trackablePeer{imaginaryPeer: &imaginaryPeer{}, id: "peer2"}
 
 	// Send a message that will cause a panic from peer1
-	panicMsg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("panic_trigger")}})
-	require.NoError(t, err)
 	pr.QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope{
 		Src:       peer1,
-		Message:   panicMsg,
+		Message:   wrappedTxs(t, "panic_trigger"),
 		ChannelID: 0x88,
 	})
 
 	// Send a normal message from peer2
-	normalMsg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("normal_msg")}})
-	require.NoError(t, err)
 	pr.QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope{
 		Src:       peer2,
-		Message:   normalMsg,
+		Message:   wrappedTxs(t, "normal_msg"),
 		ChannelID: 0x88,
 	})
 
@@ -203,11 +199,9 @@ func TestBaseReactorNilMessageHandling(t *testing.T) {
 	})
 
 	// Send a valid message after the malformed ones to test recovery
-	validMsg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("valid_after_error")}})
-	require.NoError(t, err)
 	pr.QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope{
 		Src:       peer,
-		Message:   validMsg,
+		Message:   wrappedTxs(t, "valid_after_error"),
 		ChannelID: 0x88,
 	})
 
@@ -259,9 +253,19 @@ func (r *panicReactor) GetChannels() []*conn.ChannelDescriptor {
 			ID:                  0x88,
 			Priority:            1,
 			RecvMessageCapacity: 1024, // Increase capacity to handle our test messages
-			MessageType:         &mempool.Txs{},
+			// The envelope type, as peers send it, so Receive gets the
+			// unwrapped Txs.
+			MessageType: &mempool.Message{},
 		},
 	}
+}
+
+// wrappedTxs encodes a single-tx Txs message the way peer.Send does.
+func wrappedTxs(t *testing.T, tx string) []byte {
+	t.Helper()
+	bz, err := proto.Marshal((&mempool.Txs{Txs: [][]byte{[]byte(tx)}}).Wrap())
+	require.NoError(t, err)
+	return bz
 }
 
 // Receive intentionally panics when receiving a "panic_trigger" message
@@ -287,8 +291,9 @@ type trackablePeer struct {
 
 func (tp *trackablePeer) ID() p2p.ID { return p2p.ID(tp.id) }
 
-// TestBaseReactorPanicIntegration tests panic recovery in a more realistic scenario
-// with multiple connected switches, simulating what TestNilVoteExchange might encounter.
+// TestBaseReactorPanicIntegration checks, with two connected switches, that a
+// panic in Receive disconnects the peer that caused it while both switches and
+// reactors keep running.
 func TestBaseReactorPanicIntegration(t *testing.T) {
 	// Create two connected switches with panic-prone reactors
 	cfg := config.DefaultP2PConfig()
@@ -327,39 +332,26 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 	peer0 := peers0[0]
 	peer1 := peers1[0]
 
-	// Send a panic-triggering message from switch 0 to switch 1
-	sent := peer0.Send(p2p.Envelope{
+	// Deliver a normal message before any panic, so the disconnect below
+	// cannot race it.
+	require.True(t, peer1.Send(p2p.Envelope{
+		ChannelID: 0x88,
+		Message:   &mempool.Txs{Txs: [][]byte{[]byte("normal_message")}},
+	}))
+	require.Eventually(t, func() bool {
+		r1.Lock()
+		defer r1.Unlock()
+		return len(r1.received) == 1 && r1.received[0] == "normal_message"
+	}, 5*time.Second, 10*time.Millisecond, "switch 0 should receive the normal message")
+
+	// A message that makes Receive panic disconnects its sender.
+	require.True(t, peer0.Send(p2p.Envelope{
 		ChannelID: 0x88,
 		Message:   &mempool.Txs{Txs: [][]byte{[]byte("panic_trigger")}},
-	})
-	require.True(t, sent, "Should be able to send panic message")
-
-	// Send a normal message from switch 1 to switch 0
-	normalMsg := &mempool.Txs{Txs: [][]byte{[]byte("normal_message")}}
-	sent = peer1.Send(p2p.Envelope{
-		ChannelID: 0x88,
-		Message:   normalMsg,
-	})
-	require.True(t, sent, "Should be able to send normal message")
-
-	// Wait for processing
-	time.Sleep(300 * time.Millisecond)
-
-	// Verify that both reactors are still functioning after the panic
-	// The key test is that panics don't bring down the entire system
-	r1.Lock()
-	r2.Lock()
-
-	// Switch 0 should have processed the normal message despite switch 1 panicking
-	// The message is encoded as protobuf, so we check that it received something
-	require.NotEmpty(t, r1.received, "Switch 0 should process messages even after peer panic")
-	if len(r1.received) > 0 {
-		// The actual message contains the normal_message as part of the protobuf encoding
-		require.Contains(t, r1.received[0], "normal_message", "Should contain the normal message content")
-	}
-
-	r1.Unlock()
-	r2.Unlock()
+	}))
+	require.Eventually(t, func() bool {
+		return switches[1].Peers().Size() == 0
+	}, 5*time.Second, 10*time.Millisecond, "switch 1 should disconnect the peer that made it panic")
 
 	require.True(t, switches[0].IsRunning(), "Switch 0 should still be running")
 	require.True(t, switches[1].IsRunning(), "Switch 1 should still be running")
