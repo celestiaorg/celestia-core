@@ -232,7 +232,17 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		peerState.consensusPeerState = noOpPSE{}
 	}
 
-	blockProp.setPeer(peer.ID(), peerState)
+	// The switch stops a peer before calling RemovePeer. A peer that is not
+	// running here may already have been removed, and storing its state
+	// would keep it forever.
+	blockProp.mtx.Lock()
+	if !peer.IsRunning() {
+		blockProp.mtx.Unlock()
+		peerState.cancel()
+		return
+	}
+	blockProp.peerstate[peer.ID()] = peerState
+	blockProp.mtx.Unlock()
 	go blockProp.requestFromPeer(peerState)
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
