@@ -237,12 +237,73 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 			wants.MissingPartsCount = missingPartsCount
 
-			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
+			err := blockProp.sendWantsWithinBudget(ps, wants, parts)
 			if err != nil {
 				blockProp.Logger.Error("error sending wants", "err", err)
 			}
 		}
 	}
+}
+
+// sendWantsWithinBudget drops the wants that go over the request budget and
+// sends the rest. Without the budget, we'd ask every peer for parts and get
+// way more than we need.
+func (blockProp *Reactor) sendWantsWithinBudget(ps *PeerState, wants *proptypes.WantParts, parts *proptypes.CombinedPartSet) error {
+	// peers take turns here, so two of them can't spend the same budget.
+	blockProp.requestMtx.Lock()
+	defer blockProp.requestMtx.Unlock()
+
+	// count again, parts may have arrived while we waited for our turn.
+	have := parts.BitArray()
+	missing := int(countRemainingParts(int(parts.Total()), len(have.GetTrueIndices())))
+	if missing == 0 {
+		return nil
+	}
+	wants.MissingPartsCount = int32(missing)
+
+	requested := blockProp.requestedParts(wants.Height, wants.Round, have.Size())
+	inFlight := len(requested.Sub(have).GetTrueIndices())
+
+	// allow 1.5x the parts we still need, in case a peer is slow.
+	slack := (missing + 1) / 2
+	budget := missing + slack - inFlight
+
+	reqLimit := ReqLimit(int(parts.Total()))
+	for _, index := range wants.Parts.GetTrueIndices() {
+		requesters := len(blockProp.countRequests(wants.Height, wants.Round, index))
+		// another peer may have been asked for this part in the meantime.
+		if requesters >= reqLimit {
+			wants.Parts.SetIndex(index, false)
+			continue
+		}
+		// asking a second peer for the same part (small blocks) is free.
+		if requesters > 0 {
+			continue
+		}
+		if budget <= 0 {
+			wants.Parts.SetIndex(index, false)
+			continue
+		}
+		budget--
+	}
+
+	if wants.Parts.IsEmpty() {
+		return nil
+	}
+	return blockProp.sendWantsThenBroadcastHaves(ps, wants)
+}
+
+// requestedParts returns the parts we already requested from any peer.
+func (blockProp *Reactor) requestedParts(height int64, round int32, size int) *bits.BitArray {
+	requested := bits.NewBitArray(size)
+	for _, peer := range blockProp.getPeers() {
+		reqs, has := peer.GetRequests(height, round)
+		if !has || reqs.Size() != size {
+			continue
+		}
+		requested = requested.Or(reqs)
+	}
+	return requested
 }
 
 // countRemainingParts counts the remaining parts to decode a block.
