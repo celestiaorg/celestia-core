@@ -49,3 +49,6 @@ func (evpool *Pool) AddEvidenceUnchecked(ev cmttypes.Evidence) error {
 	evpool.evidenceList.PushBack(ev)
 	return nil
 }
+
+// MaxWaitingMessagesPerPeer exposes maxWaitingMessagesPerPeer to tests.
+const MaxWaitingMessagesPerPeer = maxWaitingMessagesPerPeer
