@@ -160,3 +160,7 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 			"Config should not contain mempool type field")
 	}
 }
+
+func TestBlockSyncPipelineDefault(t *testing.T) {
+	require.True(t, config.DefaultConfig().BlockSync.Pipeline)
+}
