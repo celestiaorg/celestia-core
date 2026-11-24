@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/evidence"
 	"github.com/cometbft/cometbft/p2p"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -17,10 +17,14 @@ import (
 // A peer that sends an undecodable evidence message is disconnected.
 func TestReactorStopsPeerSendingUndecodableMessage(t *testing.T) {
 	val := types.NewMockPV()
-	reactors, _ := makeAndConnectReactorsAndPools(cfg.TestConfig(), []sm.Store{
+	reactors, _ := makeAndConnectReactorsAndPools(cmtcfg.TestConfig(), []sm.Store{
 		initializeValidatorState(val, 10),
 		initializeValidatorState(val, 10),
 	})
+	for _, reactor := range reactors {
+		sw := reactor.Switch
+		t.Cleanup(func() { _ = sw.Stop() })
+	}
 	require.Equal(t, 1, reactors[1].Switch.Peers().Size())
 
 	// A Vote's first field is a varint, so it does not decode as an EvidenceList.
