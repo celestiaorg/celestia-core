@@ -149,6 +149,59 @@ func TestSendWantsWithinBudget(t *testing.T) {
 	require.Equal(t, budget, countRequestedParts(receiver, height, round))
 }
 
+// TestSendWantsSkipsHeldParts checks that parts we got after the wants were
+// picked aren't requested and don't use up the budget.
+func TestSendWantsSkipsHeldParts(t *testing.T) {
+	const (
+		height    = int64(10)
+		round     = int32(0)
+		heldCount = 10
+	)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	compactBlock, partSet, _, _ := testCompactBlock(t, sm, pv, height, round)
+
+	reactors, switches := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	stopSwitchesOnCleanup(t, switches)
+	receiver, sender := reactors[0], reactors[1]
+	receiver.handleCompactBlock(compactBlock, sender.self, true)
+	_, parts, _, has := receiver.getAllState(height, round, false)
+	require.True(t, has)
+
+	// the wants are picked while the receiver has no parts.
+	totalParts := int(parts.Total())
+	allParts := bits.NewBitArray(totalParts)
+	allParts.Fill()
+	wants := &proptypes.WantParts{
+		Height:            height,
+		Round:             round,
+		Parts:             allParts,
+		MissingPartsCount: int32(partSet.Total()),
+	}
+
+	// then the receiver gets the first parts some other way.
+	for i := 0; i < heldCount; i++ {
+		added, err := parts.AddOriginalPart(partSet.GetPart(i))
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	peer := receiver.getPeer(sender.self)
+	require.NotNil(t, peer)
+	require.NoError(t, receiver.sendWantsWithinBudget(peer, wants, parts))
+
+	requested := receiver.requestedParts(height, round, totalParts)
+	for i := 0; i < heldCount; i++ {
+		require.False(t, requested.GetIndex(i), "requested part %d that we already have", i)
+	}
+
+	// the whole budget goes to parts we still need.
+	missing := int(partSet.Total()) - heldCount
+	budget := missing + (missing+1)/2
+	require.Equal(t, budget, len(requested.GetTrueIndices()))
+	require.Equal(t, int32(missing), wants.MissingPartsCount)
+}
+
 // countRequestedParts adds up the parts a node requested from each peer.
 func countRequestedParts(reactor *Reactor, height int64, round int32) int {
 	requested := 0

@@ -270,6 +270,11 @@ func (blockProp *Reactor) sendWantsWithinBudget(ps *PeerState, wants *proptypes.
 
 	reqLimit := ReqLimit(int(parts.Total()))
 	for _, index := range wants.Parts.GetTrueIndices() {
+		// we may have got this part while we waited for our turn.
+		if have.GetIndex(index) {
+			wants.Parts.SetIndex(index, false)
+			continue
+		}
 		requesters := len(blockProp.countRequests(wants.Height, wants.Round, index))
 		// another peer may have been asked for this part in the meantime.
 		if requesters >= reqLimit {
