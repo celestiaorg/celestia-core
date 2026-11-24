@@ -38,6 +38,12 @@ func newTokenBucketWithTokens(rate, burst, tokens float64) *tokenBucket {
 
 // allow takes one token and reports whether one was available.
 func (b *tokenBucket) allow() bool {
+	return b.allowAbove(0)
+}
+
+// allowAbove takes one token only if at least reserve tokens are left after
+// it, and reports whether it took one.
+func (b *tokenBucket) allowAbove(reserve float64) bool {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
@@ -50,7 +56,7 @@ func (b *tokenBucket) allow() bool {
 	}
 	b.last = now
 
-	if b.tokens < 1 {
+	if b.tokens-1 < reserve {
 		return false
 	}
 	b.tokens--

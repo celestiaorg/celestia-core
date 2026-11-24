@@ -507,12 +507,15 @@ func TestLonePeerIsNotCappedByItsStoredPartsBudget(t *testing.T) {
 	require.Len(t, rp.sentParts(), int(ps.Total()))
 }
 
-// A peer that floods while alone is charged for what it reads. When an honest
-// peer starts asking, the flooder is capped at once and the honest peer is
-// served soon after, as the shared budget refills.
-func TestHonestPeerIsServedSoonAfterJoiningAFlood(t *testing.T) {
+// A peer that floods while alone cannot use the reserve that the shared
+// budget keeps for other peers, so an honest peer that starts asking is
+// served at once. The flooder is then capped by its own budget.
+func TestHonestPeerIsServedAtOnceAfterJoiningAFlood(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
+	// No refill, so only the reserve can serve the honest peer.
+	r.storedPartsBudget = newTokenBucket(0, float64(types.MaxBlockPartsCount))
 	attacker := addRecordingPeer(t, r, 1_000_000)
+	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucketWithTokens(0, float64(StoredPartsPerPeerBurst), StoredPartsPerPeerInitial)
 	honest := addRecordingPeer(t, r, 1_000_000)
 	flood := func() {
 		for i := 0; i < 4*int(types.MaxBlockPartsCount)/int(ps.Total()); i++ {
@@ -521,15 +524,13 @@ func TestHonestPeerIsServedSoonAfterJoiningAFlood(t *testing.T) {
 	}
 
 	flood()
+	require.Equal(t, int(types.MaxBlockPartsCount)-StoredPartsPerPeerInitial, len(attacker.sentParts()), "a lone peer leaves the reserve")
 	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, honest.sentParts(), int(ps.Total()), "the honest peer is served from the reserve")
+
 	before := len(attacker.sentParts())
 	flood()
-	require.Less(t, len(attacker.sentParts())-before, StoredPartsPerPeerInitial, "the flooder is capped once another peer asks")
-
-	time.Sleep(200 * time.Millisecond) // the shared budget refills 400 parts
-	sent := len(honest.sentParts())
-	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-	require.Equal(t, sent+int(ps.Total()), len(honest.sentParts()), "the honest peer gets the whole block")
+	require.Equal(t, before, len(attacker.sentParts()), "the flooder is capped once another peer asks")
 }
 
 // Under contention a block larger than the peer's budget is served in part.
@@ -593,4 +594,12 @@ func TestRecentPeers(t *testing.T) {
 	now = now.Add(6 * time.Second)
 	require.False(t, r.touch("a"), "b expired")
 	require.Len(t, r.seen, 1, "expired peers are dropped")
+}
+
+func TestTokenBucketAllowAbove(t *testing.T) {
+	b := newTokenBucket(0, 5)
+	require.True(t, b.allowAbove(3))
+	require.True(t, b.allowAbove(3))
+	require.False(t, b.allowAbove(3), "3 tokens left: taking one would go below the reserve")
+	require.True(t, b.allow(), "allow may use the reserve")
 }

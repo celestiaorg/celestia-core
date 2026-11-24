@@ -499,7 +499,9 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			blockProp.Logger.Debug("peer stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
-		if !blockProp.storedPartsBudget.allow() {
+		// A lone peer leaves a reserve in the shared budget, so a peer that
+		// starts asking is served at once.
+		if !blockProp.allowSharedStoredPart(contended) {
 			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
@@ -749,4 +751,14 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}
+}
+
+// allowSharedStoredPart takes a token from the shared stored parts budget. A
+// peer that is asking alone may not take the last StoredPartsPerPeerInitial
+// tokens, which are kept for a peer that starts asking.
+func (blockProp *Reactor) allowSharedStoredPart(contended bool) bool {
+	if contended {
+		return blockProp.storedPartsBudget.allow()
+	}
+	return blockProp.storedPartsBudget.allowAbove(StoredPartsPerPeerInitial)
 }
