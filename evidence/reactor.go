@@ -116,23 +116,38 @@ func (w *waitingMessages) add(peerID p2p.ID, messageSize int) bool {
 
 // removeOldest forgets the peer's oldest waiting message.
 func (w *waitingMessages) removeOldest(peerID p2p.ID) {
-	w.remove(peerID, func(sizes []int) []int { return sizes[1:] })
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	sizes := w.sizesByPeer[peerID]
+	if len(sizes) == 0 {
+		return
+	}
+	withoutOldest := sizes[1:]
+	w.setSizes(peerID, withoutOldest)
 }
 
 // removeNewest forgets the peer's newest waiting message.
 func (w *waitingMessages) removeNewest(peerID p2p.ID) {
-	w.remove(peerID, func(sizes []int) []int { return sizes[:len(sizes)-1] })
-}
-
-func (w *waitingMessages) remove(peerID p2p.ID, drop func([]int) []int) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
-	if sizes := w.sizesByPeer[peerID]; len(sizes) > 1 {
-		w.sizesByPeer[peerID] = drop(sizes)
-	} else {
-		delete(w.sizesByPeer, peerID)
+	sizes := w.sizesByPeer[peerID]
+	if len(sizes) == 0 {
+		return
 	}
+	withoutNewest := sizes[:len(sizes)-1]
+	w.setSizes(peerID, withoutNewest)
+}
+
+// setSizes stores the peer's waiting message sizes. It forgets the peer when
+// none are left. The caller must hold the lock.
+func (w *waitingMessages) setSizes(peerID p2p.ID, sizes []int) {
+	if len(sizes) == 0 {
+		delete(w.sizesByPeer, peerID)
+		return
+	}
+	w.sizesByPeer[peerID] = sizes
 }
 
 // SetLogger sets the Logger on the reactor and the underlying Evidence.
