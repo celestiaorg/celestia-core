@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"bytes"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -158,4 +159,23 @@ func TestReactorRejectsUndecodableMessages(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return logger.addAttempts.Load() == wantProcessed
 	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// Evidence repeated within one list is added to the pool once.
+func TestReactorAddsRepeatedEvidenceOnce(t *testing.T) {
+	reactor, logger, message := stalledEvidenceReactor(t)
+	logger.release()
+
+	// Concatenated encodings of a list decode as one list with every entry.
+	var repeated cmtproto.EvidenceList
+	require.NoError(t, repeated.Unmarshal(bytes.Repeat(message, 3)))
+	require.Len(t, repeated.Evidence, 3)
+
+	addAttemptsBefore := logger.addAttempts.Load()
+	reactor.Receive(p2p.Envelope{
+		Src:       newQueueTestPeer(),
+		ChannelID: evidence.EvidenceChannel,
+		Message:   &repeated,
+	})
+	require.Equal(t, addAttemptsBefore+1, logger.addAttempts.Load())
 }
