@@ -412,11 +412,14 @@ func TestTokenBucket(t *testing.T) {
 // all peers share, or honest catchup peers get no parts.
 func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total()))
+	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total())+1)
 	attacker := addRecordingPeer(t, r, 1_000_000)
 	// No refill, so the test does not depend on how fast the loop runs.
 	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
 	honest := addRecordingPeer(t, r, 1_000_000)
+	// The honest peer is catching up: it has asked for a part already.
+	r.handleWants(honest.ID(), storedWant(ps.Total(), 1, 0))
+	require.Len(t, honest.sentParts(), 1)
 
 	for i := 0; i < 2*StoredPartsPerPeerBurst/int(ps.Total()); i++ {
 		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
@@ -424,7 +427,7 @@ func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 	require.Len(t, attacker.sentParts(), StoredPartsPerPeerBurst, "one peer is capped below the shared budget")
 
 	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-	require.Len(t, honest.sentParts(), int(ps.Total()))
+	require.Len(t, honest.sentParts(), 1+int(ps.Total()))
 }
 
 // A peer that does not read its socket makes every send fail. Each part is
@@ -432,10 +435,13 @@ func TestFloodingPeerCannotStarveStoredCatchup(t *testing.T) {
 // The peer's budget then keeps it from draining the shared budget.
 func TestFullQueuePeerCannotDrainSharedBudget(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
-	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total()))
+	r.storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst)+float64(ps.Total())+1)
 	full := addRecordingPeer(t, r, 0)
 	r.getPeer(full.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
 	honest := addRecordingPeer(t, r, 1_000_000)
+	// The honest peer is catching up: it has asked for a part already.
+	r.handleWants(honest.ID(), storedWant(ps.Total(), 1, 0))
+	require.Len(t, honest.sentParts(), 1)
 
 	for i := 0; i < 2*StoredPartsPerPeerBurst; i++ {
 		r.handleWants(full.ID(), storedWant(ps.Total(), 1, 0))
@@ -447,7 +453,7 @@ func TestFullQueuePeerCannotDrainSharedBudget(t *testing.T) {
 	require.Equal(t, StoredPartsPerPeerBurst, attempts, "store reads are bounded by the peer's budget")
 
 	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-	require.Len(t, honest.sentParts(), int(ps.Total()))
+	require.Len(t, honest.sentParts(), 1+int(ps.Total()))
 }
 
 // A new peer starts with a small budget, below the burst: enough to catch up
@@ -478,10 +484,113 @@ func TestFullPeerBurstLeavesSharedBudgetForOthers(t *testing.T) {
 	attacker := addRecordingPeer(t, r, 1_000_000)
 	r.getPeer(attacker.ID()).storedPartsBudget = newTokenBucket(0, float64(StoredPartsPerPeerBurst))
 	honest := addRecordingPeer(t, r, 1_000_000)
+	// The honest peer is catching up: it has asked for a part already.
+	r.handleWants(honest.ID(), storedWant(ps.Total(), 1, 0))
+	require.Len(t, honest.sentParts(), 1)
 
 	for i := 0; i < 2*int(types.MaxBlockPartsCount)/int(ps.Total()); i++ {
 		r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
 	}
 	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
-	require.Len(t, honest.sentParts(), int(ps.Total()))
+	require.Len(t, honest.sentParts(), 1+int(ps.Total()))
+}
+
+// A peer that is the only one asking for stored parts has no one to be fair
+// to, so its own budget does not cap it: catchup is as fast as with the
+// shared budget alone.
+func TestLonePeerIsNotCappedByItsStoredPartsBudget(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	r.getPeer(rp.ID()).storedPartsBudget = newTokenBucket(0, 10)
+
+	r.handleWants(rp.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, rp.sentParts(), int(ps.Total()))
+}
+
+// A peer that floods while alone is charged for what it reads. When an honest
+// peer starts asking, the flooder is capped at once and the honest peer is
+// served soon after, as the shared budget refills.
+func TestHonestPeerIsServedSoonAfterJoiningAFlood(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	attacker := addRecordingPeer(t, r, 1_000_000)
+	honest := addRecordingPeer(t, r, 1_000_000)
+	flood := func() {
+		for i := 0; i < 4*int(types.MaxBlockPartsCount)/int(ps.Total()); i++ {
+			r.handleWants(attacker.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+		}
+	}
+
+	flood()
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	before := len(attacker.sentParts())
+	flood()
+	require.Less(t, len(attacker.sentParts())-before, StoredPartsPerPeerInitial, "the flooder is capped once another peer asks")
+
+	time.Sleep(200 * time.Millisecond) // the shared budget refills 400 parts
+	sent := len(honest.sentParts())
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Equal(t, sent+int(ps.Total()), len(honest.sentParts()), "the honest peer gets the whole block")
+}
+
+// Under contention a block larger than the peer's budget is served in part.
+// The rest comes through retries, with the real per-peer limits.
+func TestPartlyServedStoredWantCompletesOnRetry(t *testing.T) {
+	reactors, switches := testBlockPropReactors(2, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	server, client := reactors[0], reactors[1]
+
+	txs := make(types.Txs, 300) // 300 x 125 KB is about 572 parts, over StoredPartsPerPeerInitial
+	for i := range txs {
+		txs[i] = make([]byte, 125_000)
+		txs[i][0], txs[i][1] = byte(i), byte(i>>8)
+	}
+	block := types.MakeBlock(storedTestHeight, types.Data{Txs: txs}, &types.Commit{Height: storedTestHeight - 1}, nil)
+	block.ProposerAddress = mockPubKey.Address()
+	ps, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.Greater(t, int(ps.Total()), StoredPartsPerPeerInitial)
+	server.store.SaveBlock(block, ps, &types.Commit{Height: storedTestHeight})
+	server.pmtx.Lock()
+	server.height = storedTestHeight + 10
+	server.pmtx.Unlock()
+
+	// Another peer keeps asking, so the server applies per-peer budgets.
+	other := addRecordingPeer(t, server, 1_000_000)
+	server.handleWants(other.ID(), storedWant(ps.Total(), 1, 0))
+
+	serverPeer := client.getPeer(server.self)
+	require.NotNil(t, serverPeer)
+	serverPeer.SetConsensusPeerState(&MockPeerStateEditor{height: storedTestHeight + 10})
+	psh := ps.Header()
+	client.AddCommitment(storedTestHeight, 0, &psh)
+
+	require.Eventually(t, func() bool {
+		_, parts, has := client.GetProposal(storedTestHeight, 0)
+		return has && !parts.BitArray().IsEmpty() && !parts.IsComplete()
+	}, 2*time.Second, 5*time.Millisecond, "the first want is served in part")
+	// The rest comes once the request goes idle (RequestIdleTimeout) and is
+	// sent again, well before it would expire by age.
+	require.Eventually(t, func() bool {
+		server.handleWants(other.ID(), storedWant(ps.Total(), 1, 0)) // still contended
+		client.retryWants()
+		_, parts, has := client.GetProposal(storedTestHeight, 0)
+		return has && parts.IsComplete()
+	}, RequestTimeout, 100*time.Millisecond)
+}
+
+func TestRecentPeers(t *testing.T) {
+	now := time.Unix(0, 0)
+	r := newRecentPeers(5 * time.Second)
+	r.now = func() time.Time { return now }
+
+	require.False(t, r.touch("a"), "one peer alone")
+	require.False(t, r.touch("a"), "the same peer again")
+	now = now.Add(4 * time.Second)
+	require.True(t, r.touch("b"), "a asked within the window")
+	now = now.Add(4 * time.Second)
+	require.False(t, r.touch("b"), "a asked 8 s ago and expired; b itself does not count")
+	require.True(t, r.touch("a"), "b asked now")
+	now = now.Add(6 * time.Second)
+	require.False(t, r.touch("a"), "b expired")
+	require.Len(t, r.seen, 1, "expired peers are dropped")
 }

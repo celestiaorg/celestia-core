@@ -62,6 +62,11 @@ const (
 	// RequestIdleTimeout is how long a peer may send nothing before its
 	// outstanding catchup requests expire.
 	RequestIdleTimeout = RetryTime / 2
+
+	// StoredWantsContentionWindow is how recently another peer must have asked
+	// for stored parts for per-peer budgets to apply. It covers two retry
+	// ticks, so a peer that is catching up stays counted between its retries.
+	StoredWantsContentionWindow = 2 * RetryTime
 )
 
 // StoredPartsPerPeerBurst is the burst of the per-peer budget: what the
@@ -94,6 +99,9 @@ type Reactor struct {
 	// storedPartsBudget limits how many block parts this node loads from the
 	// block store per second to serve catchup wants, across all peers.
 	storedPartsBudget *tokenBucket
+	// storedWanters records which peers asked for stored parts recently. Per-peer
+	// budgets apply only while more than one peer is asking.
+	storedWanters *recentPeers
 
 	// requestTimeout is how long catchup requests to a peer stay outstanding
 	// before retryWants may send them to that peer again.
@@ -151,6 +159,7 @@ func NewReactor(
 		ticker:        time.NewTicker(RetryTime),
 
 		storedPartsBudget:  newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
+		storedWanters:      newRecentPeers(StoredWantsContentionWindow),
 		requestTimeout:     RequestTimeout,
 		requestIdleTimeout: RequestIdleTimeout,
 	}
