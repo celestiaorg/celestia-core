@@ -160,3 +160,7 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 			"Config should not contain mempool type field")
 	}
 }
+
+func TestParallelCommitVerifyDefault(t *testing.T) {
+	require.True(t, config.DefaultConfig().ParallelCommitVerify)
+}
