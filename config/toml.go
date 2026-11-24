@@ -638,6 +638,26 @@ blockstore_goleveldb_disable_large_batch_transaction = {{ .Storage.BlockstoreGoL
 #   "always":  fsync on every synced write.
 db_wal_fsync = "{{ .Storage.DBWALFsync }}"
 
+# pebbledb only. Tuned options for the node's databases: one block cache shared
+# by all of them, bloom filters, larger blocks and files, more concurrent
+# compactions and more room before write stalls. Databases stay readable by
+# stock pebble. false restores the engine defaults (8 MiB cache per database).
+pebble_tuning = {{ .Storage.PebbleTuning }}
+
+# Size of the shared block cache in MiB. 0 = automatic:
+#   (RAM - pebble_memory_reserve_mb) * 2/5, clamped to [256 MiB, 64 GiB],
+# where RAM is the smaller of the machine memory and the cgroup limit.
+# For example 32 GiB -> 4.8 GiB, 64 GiB -> 17.6 GiB, 128 GiB -> 43 GiB.
+pebble_cache_size_mb = {{ .Storage.PebbleCacheSizeMB }}
+
+# Concurrent compactions per database. 0 = automatic: CPUs / 4, clamped to [2, 8].
+pebble_max_compactions = {{ .Storage.PebbleMaxCompactions }}
+
+# Memory in MiB that the automatic cache size leaves for the application (for
+# example the multiplexer's app process), the node's own heap and the OS. The
+# application should keep within about this value minus 4 GiB.
+pebble_memory_reserve_mb = {{ .Storage.PebbleMemoryReserveMB }}
+
 #######################################################
 ###   Transaction Indexer Configuration Options     ###
 #######################################################

@@ -40,6 +40,7 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 			// SaveBlock writes a whole block as one batch.
 			opts.MemTableSize = uint64(ctx.Config.Storage.BlockstoreMemtableSizeMB << 20)
 		}
+		ctx.Config.Storage.tunePebble(opts)
 		if ctx.Config.Storage.DBWALFsync != walfsync.ModeAlways {
 			opts.FS = walfsync.WrapFS(vfs.Default)
 		}
