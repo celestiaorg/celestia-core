@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -125,5 +126,26 @@ func WriteFileAtomic(filename string, data []byte, perm os.FileMode) (err error)
 	// cannot access the file because it is being used by another process." on windows.
 	f.Close()
 
-	return os.Rename(f.Name(), filename)
+	if err := os.Rename(f.Name(), filename); err != nil {
+		return err
+	}
+	// Without this a power loss can undo the rename and bring back the old file.
+	return syncDir(dir)
+}
+
+// syncDir fsyncs a directory so that a rename in it is durable. It is a
+// variable so tests can observe it.
+var syncDir = func(dir string) error {
+	if runtime.GOOS == "windows" { // directories cannot be fsynced there
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	if err := d.Sync(); err != nil {
+		d.Close()
+		return err
+	}
+	return d.Close()
 }
