@@ -228,6 +228,9 @@ func TestRefusedStoredWantIsRetriedWhenPeerGoesQuiet(t *testing.T) {
 		return time.Now()
 	}
 	b.mtx.Unlock()
+	// Another peer is asking, so the server applies the client's own budget.
+	other := addRecordingPeer(t, server, 1_000_000)
+	server.handleWants(other.ID(), storedWant(ps.Total(), 1, 0))
 
 	// Only idleness can expire the request in this test.
 	client.requestTimeout = time.Hour
@@ -241,6 +244,8 @@ func TestRefusedStoredWantIsRetriedWhenPeerGoesQuiet(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return budgetChecks.Load() > 0
 	}, 2*time.Second, 10*time.Millisecond, "server refuses the first want")
+	_, parts, _ := client.GetProposal(storedTestHeight, 0)
+	require.True(t, parts.BitArray().IsEmpty(), "the refused want sent no parts")
 
 	b.mtx.Lock()
 	b.rate, b.burst, b.tokens = 10_000, 10_000, 10_000
