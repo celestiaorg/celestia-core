@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync/atomic"
@@ -35,6 +36,14 @@ const (
 	// older round that delayed precommits commit. The highest round is never
 	// the lowest of a full height, so it is never evicted.
 	MaxPeerStateRoundsPerHeight = 32
+
+	// MaxServesPerPart is how many times this node sends one part of a cached
+	// proposal to one peer in answer to its wants. An honest peer needs a part
+	// once, or twice if it first got the part without a proof and later asks
+	// for it with one during catchup. One more send covers a retry after the
+	// peer dropped a part. Wants past the cap are not served, so repeating a
+	// want cannot make this node queue the same parts without bound.
+	MaxServesPerPart = 3
 )
 
 type request struct {
@@ -60,6 +69,12 @@ type PeerState struct {
 	receivedHaves     chan request
 	canRequest        chan struct{}
 	remainingRequests map[int64]map[int32]int
+
+	// servedParts counts the parts sent to the peer in answer to its wants,
+	// indexed by the height and round the proposal is cached at. The reactor
+	// only adds entries for proposals it has cached, and prune drops them on
+	// commit, so the proposal cache bounds this map.
+	servedParts map[int64]map[int32]*servedParts
 
 	logger log.Logger
 
@@ -95,6 +110,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		receivedParts:       make(chan partData, 20_000),
 		canRequest:          make(chan struct{}, 1),
 		remainingRequests:   make(map[int64]map[int32]int),
+		servedParts:         make(map[int64]map[int32]*servedParts),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
 	}
@@ -431,6 +447,7 @@ func (d *PeerState) DeleteHeight(height int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	delete(d.state, height)
+	delete(d.servedParts, height)
 }
 
 // DeleteRound removes all part state for a given height and round.
@@ -442,6 +459,9 @@ func (d *PeerState) DeleteRound(height int64, round int32) {
 	}
 	if d.remainingRequests[height] != nil {
 		delete(d.remainingRequests[height], round)
+	}
+	if d.servedParts[height] != nil {
+		delete(d.servedParts[height], round)
 	}
 }
 
@@ -471,6 +491,11 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	for height := range d.remainingRequests {
 		if height < prunePastHeight {
 			delete(d.remainingRequests, height)
+		}
+	}
+	for height := range d.servedParts {
+		if height < prunePastHeight {
+			delete(d.servedParts, height)
 		}
 	}
 	// Prune unverified proposals for heights <= prunePastHeight
@@ -587,6 +612,70 @@ func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
 		return false
 	}
 	return partState.everRequested.GetIndex(int(index))
+}
+
+// servedParts counts how many times each part of one block was sent to a
+// peer in answer to its wants.
+type servedParts struct {
+	// blockHash is the part set hash of the block the counts belong to. The
+	// block cached at a height and round can be replaced by another one, and
+	// counts for the old block must not apply to the new one.
+	blockHash []byte
+	// counts holds the number of sends per part index.
+	counts []uint8
+}
+
+// UnservedParts returns the parts in wanted that were sent to the peer fewer
+// than MaxServesPerPart times. The counts are kept per height, round and
+// block: if another block was tracked at this height and round, its counts
+// are dropped first.
+func (d *PeerState) UnservedParts(height int64, round int32, blockHash []byte, wanted *bits.BitArray) *bits.BitArray {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	rounds := d.servedParts[height]
+	if rounds == nil {
+		rounds = make(map[int32]*servedParts)
+		d.servedParts[height] = rounds
+	}
+	served := rounds[round]
+	sameBlock := served != nil && bytes.Equal(served.blockHash, blockHash) && len(served.counts) == wanted.Size()
+	if !sameBlock {
+		served = &servedParts{
+			blockHash: blockHash,
+			counts:    make([]uint8, wanted.Size()),
+		}
+		rounds[round] = served
+	}
+
+	unserved := wanted.Copy()
+	for _, partIndex := range wanted.GetTrueIndices() {
+		if served.counts[partIndex] >= MaxServesPerPart {
+			unserved.SetIndex(partIndex, false)
+		}
+	}
+	return unserved
+}
+
+// RecordServedParts counts one send of each given part to the peer. It does
+// nothing if the block tracked at this height and round is no longer the one
+// the parts belong to.
+func (d *PeerState) RecordServedParts(height int64, round int32, blockHash []byte, partIndices []int) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	served := d.servedParts[height][round]
+	if served == nil || !bytes.Equal(served.blockHash, blockHash) {
+		return
+	}
+	for _, partIndex := range partIndices {
+		if partIndex < 0 || partIndex >= len(served.counts) {
+			continue
+		}
+		if served.counts[partIndex] < MaxServesPerPart {
+			served.counts[partIndex]++
+		}
+	}
 }
 
 type partState struct {
