@@ -55,6 +55,15 @@ Celestia-specific ADRs live in `docs/celestia-architecture/`.
 - Don't repeat the review tag in the PR description; the title already carries it.
 - Keep PR descriptions short. Add a "Note for reviewers" for consensus-affecting, breaking, or migration-required changes.
 
+## Benchmarking
+
+Every PR that changes non-test Go code must be benchmarked against its base branch before it is opened or marked ready, to show it does not regress performance.
+
+- Run the benchmarks covering the changed packages on the base commit and on the PR head, on the same machine: `go test -run '^$' -bench . -benchmem -count 10 ./<pkg>/... > {base,head}.txt`, then `benchstat base.txt head.txt`.
+- Put the benchstat summary (or a short before/after table) in the PR description. Fix any statistically significant regression in time, bytes, or allocs per op, or justify it there.
+- If no benchmark exercises the changed path, say so in the PR description and state how performance was checked instead.
+- Docs, CI, and test-only changes are exempt.
+
 ## Changelog
 
 Do not create `CHANGELOG.md` or `.changelog/` entries; use the commit log and GitHub release notes. This overrides older upstream guidance in CONTRIBUTING.md or other docs. Delete changelog files encountered in a branch or PR rather than updating them.
