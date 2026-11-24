@@ -194,7 +194,15 @@ func (evR *Reactor) Receive(e p2p.Envelope) {
 		return
 	}
 
+	// A list can repeat the same evidence many times. Add each one once.
+	alreadyAdded := make(map[string]struct{}, len(evis))
 	for _, ev := range evis {
+		hash := string(ev.Hash())
+		if _, repeated := alreadyAdded[hash]; repeated {
+			continue
+		}
+		alreadyAdded[hash] = struct{}{}
+
 		err := evR.evpool.AddEvidence(ev)
 		switch err.(type) {
 		case *types.ErrInvalidEvidence:
