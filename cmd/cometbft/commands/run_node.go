@@ -91,6 +91,10 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"db_dir",
 		config.DBPath,
 		"database directory")
+	cmd.Flags().Bool(
+		"storage.accept_unsynced_crash",
+		config.Storage.AcceptUnsyncedCrash,
+		"start even though the OS crashed while WAL fsyncs were skipped (use for one start only)")
 
 	cmd.PersistentFlags().String(
 		trace.FlagTracePushConfig,

@@ -341,3 +341,17 @@ func TestBlockstoreDir(t *testing.T) {
 	cfg.BlockstorePath = "/opt/blockstore"
 	assert.Equal(t, "/opt/blockstore", cfg.BlockstoreDir())
 }
+
+func TestStorageConfigWALFsync(t *testing.T) {
+	cfg := config.DefaultStorageConfig()
+	require.Equal(t, "catchup", cfg.WALFsync)
+	require.False(t, cfg.AcceptUnsyncedCrash)
+	for mode, ok := range map[string]bool{"catchup": true, "always": true, "": true, "never": false, "nosync": false} {
+		cfg.WALFsync = mode
+		if ok {
+			require.NoError(t, cfg.ValidateBasic(), mode)
+		} else {
+			require.ErrorContains(t, cfg.ValidateBasic(), "wal_fsync", mode)
+		}
+	}
+}

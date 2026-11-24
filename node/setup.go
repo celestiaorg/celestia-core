@@ -26,6 +26,7 @@ import (
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/light"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
@@ -308,6 +309,26 @@ func createEvidenceReactor(config *cfg.Config, dbProvider cfg.DBProvider,
 	return evidenceReactor, evidencePool, nil
 }
 
+// checkWALFsync refuses to start after an OS crash that happened while WAL
+// fsyncs were skipped, unless the operator accepts it, and returns the
+// controller for this node (nil when WAL fsyncs are never skipped).
+func checkWALFsync(config *cfg.Config, logger log.Logger) (*walfsync.Controller, error) {
+	found, err := walfsync.CheckMarker(config.DBDir(), config.Storage.AcceptUnsyncedCrash)
+	if err != nil {
+		return nil, err
+	}
+	if found && config.Storage.AcceptUnsyncedCrash {
+		logger.Error("Starting after a crash that happened while WAL fsyncs were skipped " +
+			"(accept_unsynced_crash is set). If the handshake fails, roll back or re-sync from a snapshot.")
+	} else if found {
+		logger.Info("Previous run stopped while WAL fsyncs were skipped; the OS did not crash, so the WAL files were fsynced")
+	}
+	if dbm.BackendType(config.DBBackend) != dbm.PebbleDBBackend {
+		return nil, nil
+	}
+	return walfsync.NewController(config.Storage.WALFsync, config.DBDir()), nil
+}
+
 func createBlocksyncReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
@@ -318,10 +339,12 @@ func createBlocksyncReactor(config *cfg.Config,
 	metrics *blocksync.Metrics,
 	offlineStateSyncHeight int64,
 	tracer trace.Tracer,
+	walFsync *walfsync.Controller,
 ) (bcReactor p2p.Reactor, err error) {
 	switch config.BlockSync.Version {
 	case "v0":
-		bcReactor = blocksync.NewReactorWithAddr(state.Copy(), blockExec, blockStore, blockSync, localAddr, metrics, offlineStateSyncHeight, tracer, blocksync.ReactorVerifyData(config.BlockSync.VerifyData))
+		bcReactor = blocksync.NewReactorWithAddr(state.Copy(), blockExec, blockStore, blockSync, localAddr, metrics, offlineStateSyncHeight, tracer,
+			blocksync.ReactorVerifyData(config.BlockSync.VerifyData), blocksync.ReactorWALFsync(walFsync))
 	case "v1", "v2":
 		return nil, fmt.Errorf("block sync version %s has been deprecated. Please use v0", config.BlockSync.Version)
 	default:

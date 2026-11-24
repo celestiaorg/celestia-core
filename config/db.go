@@ -3,10 +3,13 @@ package config
 import (
 	"context"
 
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/walfsync"
 )
 
 // ServiceProvider takes a config and a logger and returns a ready to go Node.
@@ -29,6 +32,13 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	path := ctx.Path
 	if path == "" {
 		path = ctx.Config.DBDir()
+	}
+	if dbType == dbm.PebbleDBBackend {
+		opts := &pebble.Options{}
+		if ctx.Config.Storage.WALFsync != walfsync.ModeAlways {
+			opts.FS = walfsync.WrapFS(vfs.Default)
+		}
+		return dbm.NewPebbleDBWithOpts(ctx.ID, path, opts)
 	}
 	return dbm.NewDB(ctx.ID, dbType, path)
 }
