@@ -474,6 +474,10 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		return
 	}
 
+	// Per-peer budgets only matter when another peer is also asking: a lone
+	// peer may use the whole shared budget, as there is no one to be fair to.
+	contended := blockProp.storedWanters.touch(peer)
+
 	// The peer chooses the round, so count its remaining requests locally
 	// instead of in its PeerState, which pruning would not bound.
 	remaining := int(wants.MissingPartsCount)
@@ -486,8 +490,10 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			break
 		}
 		// Take the peer's own token first, so that one peer cannot use up
-		// the budget that all peers share.
-		if !p.storedPartsBudget.allow() {
+		// the budget that all peers share. The token is taken even when no
+		// other peer is asking, so a peer that read a lot while alone is held
+		// back as soon as another peer asks.
+		if !p.storedPartsBudget.allow() && contended {
 			blockProp.Logger.Debug("peer stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
