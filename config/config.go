@@ -1159,13 +1159,18 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 type BlockSyncConfig struct {
 	Version    string `mapstructure:"version"`
 	VerifyData bool   `mapstructure:"verify_data"`
+	// MaxRequesters is how many blocks are requested ahead of the one being
+	// applied (0 means the default of 40). Worst-case memory is
+	// MaxRequesters x max block size.
+	MaxRequesters int `mapstructure:"max_requesters"`
 }
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
 func DefaultBlockSyncConfig() *BlockSyncConfig {
 	return &BlockSyncConfig{
-		Version:    "v0",
-		VerifyData: true,
+		Version:       "v0",
+		VerifyData:    true,
+		MaxRequesters: 40,
 	}
 }
 
@@ -1176,6 +1181,11 @@ func TestBlockSyncConfig() *BlockSyncConfig {
 
 // ValidateBasic performs basic validation.
 func (cfg *BlockSyncConfig) ValidateBasic() error {
+	// 0 means the default. Below 2 sync stalls (block H needs H+1); the cap
+	// bounds memory.
+	if cfg.MaxRequesters != 0 && (cfg.MaxRequesters < 2 || cfg.MaxRequesters > 1000) {
+		return fmt.Errorf("max_requesters must be 0 (default) or in [2, 1000], got %d", cfg.MaxRequesters)
+	}
 	switch cfg.Version {
 	case "v0":
 		return nil
