@@ -587,14 +587,16 @@ func TestPartlyServedStoredWantCompletesOnRetry(t *testing.T) {
 		_, parts, has := client.GetProposal(storedTestHeight, 0)
 		return has && !parts.BitArray().IsEmpty() && !parts.IsComplete()
 	}, 2*time.Second, 5*time.Millisecond, "the first want is served in part")
-	// The rest comes once the request goes idle (RequestIdleTimeout) and is
-	// sent again, well before it would expire by age.
+	// The rest comes once the request goes idle and is sent again. The
+	// timing of that retry is covered by TestPeerStateExpireIdleRequests and
+	// TestRefusedStoredWantIsRetriedWhenPeerGoesQuiet; the limit here only has
+	// to absorb a slow -race run.
 	require.Eventually(t, func() bool {
 		server.handleWants(other.ID(), storedWant(ps.Total(), 1, 0)) // still contended
 		client.retryWants()
 		_, parts, has := client.GetProposal(storedTestHeight, 0)
 		return has && parts.IsComplete()
-	}, RequestTimeout, 100*time.Millisecond)
+	}, 15*time.Second, 100*time.Millisecond)
 }
 
 func TestRecentPeers(t *testing.T) {
