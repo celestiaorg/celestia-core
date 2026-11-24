@@ -34,6 +34,8 @@ const (
 	defaultMaxPeers = 50
 	// ReactorIncomingMessageQueueSize is the size of the reactor's message
 	// queue. It fits every peer's waiting messages at the default peer limit.
+	// A node with more peers can fill it, and evidence dropped then is sent
+	// again by the peer.
 	ReactorIncomingMessageQueueSize = defaultMaxPeers * maxWaitingMessagesPerPeer
 )
 
@@ -59,16 +61,14 @@ func NewReactor(evpool *Pool) *Reactor {
 	return evR
 }
 
-// queueWithinPeerBudget queues a message, or drops it if the peer is over its
-// budget or the queue is full. It never blocks, because blocking would stall
-// the peer's whole connection. Peers send dropped evidence again.
-//
-// A queued message stays in its peer's budget until Receive takes it, even if
-// the peer disconnects, so reconnecting does not give a peer a new budget.
+// queueWithinPeerBudget queues a message without blocking the peer's connection,
+// or drops it if the peer is over budget or the queue is full. A queued message
+// stays charged to the peer ID until Receive takes it, even across reconnects.
 func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 	peerID := e.Src.ID()
 	messageSize := len(e.Message)
 	if !evR.waiting.add(peerID, messageSize) {
+		evR.Logger.Debug("Dropping evidence message from a peer over its queue budget", "peer", peerID)
 		return
 	}
 
@@ -76,21 +76,9 @@ func (evR *Reactor) queueWithinPeerBudget(e p2p.UnprocessedEnvelope) {
 	if !queued {
 		evR.waiting.removeNewest(peerID)
 	}
-	// A message that fails to decode is not queued, because it would never
-	// reach Receive and would stay in the peer's budget forever.
-	if decodeErr != nil {
-		evR.stopPeerForUndecodableMessage(e.Src, decodeErr)
+	if decodeErr != nil && evR.Switch != nil {
+		evR.Switch.StopPeerForError(e.Src, decodeErr, evR.String())
 	}
-}
-
-func (evR *Reactor) stopPeerForUndecodableMessage(peer p2p.Peer, err error) {
-	evR.Logger.Error("Error decoding message", "src", peer, "chId", EvidenceChannel, "err", err)
-	if evR.Switch == nil {
-		return
-	}
-	// This runs on the peer's receive routine, so stop the peer from another
-	// goroutine.
-	go evR.Switch.StopPeerForError(peer, err, evR.String())
 }
 
 // waitingMessages tracks the sizes of the messages each peer has in the
@@ -128,28 +116,23 @@ func (w *waitingMessages) add(peerID p2p.ID, messageSize int) bool {
 
 // removeOldest forgets the peer's oldest waiting message.
 func (w *waitingMessages) removeOldest(peerID p2p.ID) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-
-	sizes := w.sizesByPeer[peerID]
-	if len(sizes) <= 1 {
-		delete(w.sizesByPeer, peerID)
-		return
-	}
-	w.sizesByPeer[peerID] = sizes[1:]
+	w.remove(peerID, func(sizes []int) []int { return sizes[1:] })
 }
 
 // removeNewest forgets the peer's newest waiting message.
 func (w *waitingMessages) removeNewest(peerID p2p.ID) {
+	w.remove(peerID, func(sizes []int) []int { return sizes[:len(sizes)-1] })
+}
+
+func (w *waitingMessages) remove(peerID p2p.ID, drop func([]int) []int) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
-	sizes := w.sizesByPeer[peerID]
-	if len(sizes) <= 1 {
+	if sizes := w.sizesByPeer[peerID]; len(sizes) > 1 {
+		w.sizesByPeer[peerID] = drop(sizes)
+	} else {
 		delete(w.sizesByPeer, peerID)
-		return
 	}
-	w.sizesByPeer[peerID] = sizes[:len(sizes)-1]
 }
 
 // SetLogger sets the Logger on the reactor and the underlying Evidence.
