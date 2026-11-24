@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -1458,6 +1459,13 @@ type StorageConfig struct {
 	// BlockstoreGoLevelDBDisableLargeBatchTransaction writes goleveldb batches larger
 	// than the memtable through the journal, not a transaction that waits on compaction.
 	BlockstoreGoLevelDBDisableLargeBatchTransaction bool `mapstructure:"blockstore_goleveldb_disable_large_batch_transaction"`
+	// WALFsync is "catchup" (default) to skip pebble WAL fsyncs while block
+	// syncing, or "always" to fsync them on every synced write. See
+	// libs/walfsync.
+	WALFsync string `mapstructure:"wal_fsync"`
+	// AcceptUnsyncedCrash lets the node start after the operating system went
+	// down while WAL fsyncs were skipped. Set it for one start only.
+	AcceptUnsyncedCrash bool `mapstructure:"accept_unsynced_crash"`
 }
 
 // maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; about three
@@ -1473,6 +1481,7 @@ func DefaultStorageConfig() *StorageConfig {
 		CompactionInterval:       10000,
 		BlockstoreMemtableSizeMB: 64,
 		BlockstoreGoLevelDBDisableLargeBatchTransaction: true,
+		WALFsync: walfsync.ModeCatchup,
 	}
 }
 
@@ -1490,6 +1499,9 @@ func (cfg *StorageConfig) ValidateBasic() error {
 	if cfg.BlockstoreMemtableSizeMB < 0 || cfg.BlockstoreMemtableSizeMB > maxBlockstoreMemtableSizeMB {
 		return fmt.Errorf("blockstore_memtable_size_mb must be between 0 and %d, got %d",
 			maxBlockstoreMemtableSizeMB, cfg.BlockstoreMemtableSizeMB)
+	}
+	if err := walfsync.ValidateMode(cfg.WALFsync); err != nil {
+		return err
 	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
 		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)

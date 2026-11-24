@@ -627,6 +627,20 @@ blockstore_memtable_size_mb = {{ .Storage.BlockstoreMemtableSizeMB }}
 # the size above to 0 to restore the engine defaults.
 blockstore_goleveldb_disable_large_batch_transaction = {{ .Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction }}
 
+# pebbledb only. When to fsync the write-ahead logs of the node's databases:
+#   "catchup": skip WAL fsyncs while block syncing and fsync every WAL before
+#              switching to consensus. Every write still reaches the kernel
+#              before it returns, so a process crash loses nothing. A power loss
+#              or kernel crash while block syncing can leave the databases out
+#              of order; the node then refuses to start until you roll back,
+#              re-sync, or set accept_unsynced_crash.
+#   "always":  fsync on every synced write.
+wal_fsync = "{{ .Storage.WALFsync }}"
+
+# Start even though the operating system went down while WAL fsyncs were
+# skipped (see wal_fsync). Set it for one start only.
+accept_unsynced_crash = {{ .Storage.AcceptUnsyncedCrash }}
+
 #######################################################
 ###   Transaction Indexer Configuration Options     ###
 #######################################################

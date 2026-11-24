@@ -4,11 +4,13 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/walfsync"
 )
 
 // ServiceProvider takes a config and a logger and returns a ready to go Node.
@@ -32,17 +34,25 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	if path == "" {
 		path = ctx.Config.DBDir()
 	}
+	if dbType == dbm.PebbleDBBackend {
+		opts := &pebble.Options{}
+		if ctx.ID == "blockstore" {
+			// SaveBlock writes a whole block as one batch.
+			opts.MemTableSize = uint64(ctx.Config.Storage.BlockstoreMemtableSizeMB << 20)
+		}
+		if ctx.Config.Storage.WALFsync != walfsync.ModeAlways {
+			opts.FS = walfsync.WrapFS(vfs.Default)
+		}
+		return dbm.NewPebbleDBWithOpts(ctx.ID, path, opts)
+	}
 	if ctx.ID == "blockstore" {
 		// Blockstore memtable options: SaveBlock writes a whole block as one batch.
 		memtable := ctx.Config.Storage.BlockstoreMemtableSizeMB << 20
-		switch dbType {
-		case dbm.GoLevelDBBackend:
+		if dbType == dbm.GoLevelDBBackend {
 			return dbm.NewGoLevelDBWithOpts(ctx.ID, path, &opt.Options{
 				WriteBuffer:                  memtable,
 				DisableLargeBatchTransaction: ctx.Config.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction,
 			})
-		case dbm.PebbleDBBackend:
-			return dbm.NewPebbleDBWithOpts(ctx.ID, path, &pebble.Options{MemTableSize: uint64(memtable)})
 		}
 	}
 	return dbm.NewDB(ctx.ID, dbType, path)
