@@ -94,7 +94,7 @@ func track(name string, f vfs.File, err error) (vfs.File, error) {
 	return w, nil
 }
 
-// walFile is a WAL file. mu serialises real syncs, Close and the dirty flag,
+// walFile is a WAL file. mu serializes real syncs, Close and the dirty flag,
 // so Barrier never returns while a Close-time fsync is still running.
 type walFile struct {
 	vfs.File
@@ -179,7 +179,7 @@ func Barrier() error {
 	}
 	open.Unlock()
 
-	var errs []error
+	errs := make([]error, 0, len(files))
 	for _, f := range files {
 		errs = append(errs, f.syncNow())
 	}
