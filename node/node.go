@@ -414,6 +414,13 @@ func NewNodeWithContext(ctx context.Context,
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
 
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
+	// With state sync the app has no state to answer from yet. The block
+	// executor sets the limits after the first block it applies.
+	if !stateSync {
+		if err := setMempoolBlockLimits(ctx, proxyApp, mempool); err != nil {
+			return nil, err
+		}
+	}
 	if catReactor, ok := mempoolReactor.(*cat.Reactor); ok {
 		if len(nodeKey.ID()) == 0 {
 			catReactor.SetStickySalt(nil)
