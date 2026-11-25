@@ -628,3 +628,64 @@ func TestTokenBucketAllowAbove(t *testing.T) {
 	require.False(t, b.allowAbove(3), "3 tokens left: taking one would go below the reserve")
 	require.True(t, b.allow(), "allow may use the reserve")
 }
+
+// A want that selects no stored original part reads nothing from the store,
+// so it must not count as asking: else a peer could cap every honest peer by
+// sending empty or parity-only wants.
+func TestWantWithoutStoredPartsDoesNotStartContention(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	attacker := addRecordingPeer(t, r, 1_000_000)
+	honest := addRecordingPeer(t, r, 1_000_000)
+	r.getPeer(honest.ID()).storedPartsBudget = newTokenBucket(0, 10)
+
+	r.handleWants(attacker.ID(), storedWant(ps.Total(), 1))                  // empty
+	r.handleWants(attacker.ID(), storedWant(ps.Total(), 1, int(ps.Total()))) // parity only
+	require.Empty(t, attacker.sentParts())
+
+	r.handleWants(honest.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	require.Len(t, honest.sentParts(), int(ps.Total()), "the honest peer is still asking alone")
+}
+
+// A part that fails validation is not progress: it must not keep the
+// sender's outstanding requests from going idle.
+func TestInvalidPartDoesNotMarkPeerActive(t *testing.T) {
+	reactors, switches := testBlockPropReactors(2, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	server, client := reactors[0], reactors[1]
+	ps := storeTestBlock(t, server)
+
+	// The server refuses, so the client has an outstanding request and no parts.
+	b := server.getPeer(client.self).storedPartsBudget
+	b.mtx.Lock()
+	b.rate, b.tokens = 0, 0
+	b.mtx.Unlock()
+	other := addRecordingPeer(t, server, 1_000_000)
+	server.handleWants(other.ID(), storedWant(ps.Total(), 1, 0))
+
+	serverPeer := client.getPeer(server.self)
+	require.NotNil(t, serverPeer)
+	serverPeer.SetConsensusPeerState(&MockPeerStateEditor{height: storedTestHeight + 10})
+	psh := ps.Header()
+	client.AddCommitment(storedTestHeight, 0, &psh)
+	require.Eventually(t, func() bool {
+		requests, has := serverPeer.GetRequests(storedTestHeight, 0)
+		return has && requests.GetIndex(0)
+	}, 2*time.Second, 10*time.Millisecond)
+
+	part := ps.GetPart(0)
+	bad := &proptypes.RecoveryPart{
+		Height: storedTestHeight,
+		Round:  0,
+		Index:  0,
+		Data:   append([]byte{0xff}, part.Bytes[1:]...),
+		Proof:  &part.Proof,
+	}
+	client.handleRecoveryPart(server.self, bad)
+
+	_, parts, _ := client.GetProposal(storedTestHeight, 0)
+	require.False(t, parts.BitArray().GetIndex(0), "the corrupt part was rejected")
+	serverPeer.mtx.RLock()
+	receivedAt := serverPeer.state[storedTestHeight][0].receivedAt
+	serverPeer.mtx.RUnlock()
+	require.True(t, receivedAt.IsZero(), "a rejected part does not mark the peer active")
+}

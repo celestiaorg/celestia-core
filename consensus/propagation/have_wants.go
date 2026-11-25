@@ -474,13 +474,10 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		return
 	}
 
-	// Per-peer budgets only matter when another peer is also asking: a lone
-	// peer may use the whole shared budget, as there is no one to be fair to.
-	contended := blockProp.storedWanters.touch(peer)
-
 	// The peer chooses the round, so count its remaining requests locally
 	// instead of in its PeerState, which pruning would not bound.
 	remaining := int(wants.MissingPartsCount)
+	var contended, touched bool
 	for _, partIndex := range wants.Parts.GetTrueIndices() {
 		// Indices are ascending, so the rest are parity parts.
 		if partIndex >= total {
@@ -488,6 +485,14 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		}
 		if remaining <= 0 {
 			break
+		}
+		// Per-peer budgets only matter when another peer is also asking: a
+		// lone peer may use the whole shared budget, as there is no one to be
+		// fair to. A want counts as asking only once it selects a stored part,
+		// so empty or parity-only wants cannot cap other peers.
+		if !touched {
+			contended = blockProp.storedWanters.touch(peer)
+			touched = true
 		}
 		// Take the peer's own token first, so that one peer cannot use up
 		// the budget that all peers share. The token is taken even when no
@@ -573,10 +578,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if p != nil && !blockProp.admitPart(p, part) {
 		return
 	}
-	if p != nil {
-		// The peer is still answering, so retryWants keeps its requests.
-		p.MarkPartReceived(part.Height, part.Round)
-	}
 
 	// todo: add these defensive checks in a better way
 	if cb == nil {
@@ -604,6 +605,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
+	}
+	if p != nil {
+		// The peer sent a valid part, so it is still answering: retryWants
+		// keeps its requests.
+		p.MarkPartReceived(part.Height, part.Round)
 	}
 
 	if p := blockProp.getPeer(peer); p != nil {
