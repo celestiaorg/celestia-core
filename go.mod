@@ -13,7 +13,7 @@ require (
 	github.com/btcsuite/btcd/btcutil v1.2.0
 	github.com/celestiaorg/go-square/v4 v4.3.1
 	github.com/celestiaorg/nmt v0.24.5
-	github.com/cockroachdb/pebble v1.1.4
+	github.com/cockroachdb/pebble v1.1.5
 	github.com/cometbft/cometbft-db v1.0.4
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
