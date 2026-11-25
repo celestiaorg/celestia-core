@@ -260,6 +260,10 @@ message ResponseInfo {
   bytes last_block_app_hash = 5;
 
   TimeoutInfo timeout_info = 6 [(gogoproto.nullable) = false];
+
+  // block_limits are the per-block limits the application enforces when it
+  // builds a proposal. The mempool applies them when it reaps.
+  BlockLimits block_limits = 7 [(gogoproto.nullable) = false];
 }
 
 message ResponseInitChain {
@@ -303,6 +307,10 @@ message ResponseCheckTx {
   bytes  address  = 15;
   int64  priority = 16;
   uint64 sequence = 17;
+
+  // usage is how much of each per-block limit this transaction uses. The
+  // mempool sums it when it reaps.
+  TxUsage usage = 18 [(gogoproto.nullable) = false];
 }
 
 message ResponseCommit {
@@ -396,6 +404,10 @@ message ResponseFinalizeBlock {
   bytes app_hash = 5;
 
   TimeoutInfo timeout_info = 6 [(gogoproto.nullable) = false];
+
+  // block_limits are the per-block limits the application enforces when it
+  // builds a proposal. The mempool applies them when it reaps.
+  BlockLimits block_limits = 7 [(gogoproto.nullable) = false];
 }
 
 message ResponseQuerySequence {
@@ -543,4 +555,29 @@ message TimeoutInfo {
   // Floor on the interval between the earliest start times of consecutive heights, except
   // while the schedule catches up with a node that reset ahead of it; 0 disables it.
   google.protobuf.Duration dynamic_timeout_commit    = 9 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+}
+
+// BlockLimits are the per-block limits the application enforces when it builds
+// a proposal. They only count transactions that are neither blob transactions
+// nor PayForFibre transactions. Zero means the application has no such limit.
+message BlockLimits {
+  // max_sdk_gas is the limit on the summed gas limits of the transactions.
+  uint64 max_sdk_gas = 1;
+  // max_sdk_messages is the limit on the number of messages.
+  uint64 max_sdk_messages = 2;
+  // max_zk_proof_messages is the limit on the number of messages that verify
+  // a ZK proof.
+  uint64 max_zk_proof_messages = 3;
+  // max_ism_signatures is the limit on the number of ISM signatures.
+  uint64 max_ism_signatures = 4;
+}
+
+// TxUsage is how much of each limit in BlockLimits a transaction uses. A
+// transaction that the limits do not count, such as a blob transaction,
+// reports zero for all of them.
+message TxUsage {
+  uint64 sdk_gas           = 1;
+  uint64 sdk_messages      = 2;
+  uint64 zk_proof_messages = 3;
+  uint64 ism_signatures    = 4;
 }
