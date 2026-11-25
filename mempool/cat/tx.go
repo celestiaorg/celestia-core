@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -19,6 +20,7 @@ type wrappedTx struct {
 	priority      int64           // app: priority value for this transaction
 	sender        []byte          // app: assigned sender label
 	sequence      uint64          // app: sequence number for this transaction
+	usage         abci.TxUsage    // app: what this transaction uses of the per-block limits
 	fromBroadcast bool            // true if submitted via local RPC broadcast
 }
 

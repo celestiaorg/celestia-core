@@ -36,6 +36,13 @@ type PendingSequencer interface {
 	HighestPendingSequence(signer []byte) (uint64, bool)
 }
 
+// BlockLimitsSetter is implemented by a mempool that applies the app's
+// per-block limits when it reaps, so that it does not reap a transaction the
+// app would then skip when it builds the proposal.
+type BlockLimitsSetter interface {
+	SetBlockLimits(limits abci.BlockLimits)
+}
+
 //go:generate ../scripts/mockery_generate.sh Mempool
 
 // Mempool defines the mempool interface.

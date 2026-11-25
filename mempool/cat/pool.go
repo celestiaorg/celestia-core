@@ -21,8 +21,9 @@ import (
 
 // enforce compile-time satisfaction of the Mempool interface
 var (
-	_ mempool.Mempool          = (*TxPool)(nil)
-	_ mempool.PendingSequencer = (*TxPool)(nil)
+	_ mempool.Mempool           = (*TxPool)(nil)
+	_ mempool.PendingSequencer  = (*TxPool)(nil)
+	_ mempool.BlockLimitsSetter = (*TxPool)(nil)
 )
 
 var (
@@ -65,6 +66,10 @@ type TxPool struct {
 	postCheckFn          mempool.PostCheckFunc
 	height               atomic.Int64 // the latest height passed to Update; written under mtx, read lock-free
 	lastPurgeTime        time.Time    // the last time we attempted to purge transactions via the TTL
+
+	// blockLimits are the app's per-block limits, applied when reaping. Nil
+	// until the app reports them, which means no limits.
+	blockLimits atomic.Pointer[abci.BlockLimits]
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *mempool.RejectedTxCache
@@ -184,6 +189,22 @@ func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 // Height returns the latest height that the mempool is at
 func (txmp *TxPool) Height() int64 {
 	return txmp.height.Load()
+}
+
+// SetBlockLimits sets the app's per-block limits that ReapMaxBytesMaxGas
+// applies. It is thread-safe.
+func (txmp *TxPool) SetBlockLimits(limits abci.BlockLimits) {
+	txmp.blockLimits.Store(&limits)
+}
+
+// BlockLimits returns the app's per-block limits that ReapMaxBytesMaxGas
+// applies. It is thread-safe.
+func (txmp *TxPool) BlockLimits() abci.BlockLimits {
+	limits := txmp.blockLimits.Load()
+	if limits == nil {
+		return abci.BlockLimits{}
+	}
+	return *limits
 }
 
 // HeightSignal returns a channel that fires whenever the mempool height advances.
@@ -383,6 +404,7 @@ func (txmp *TxPool) tryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	wtx := newWrappedTx(
 		tx, txmp.height.Load(), rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence, txInfo.FromBroadcast,
 	)
+	wtx.usage = rsp.Usage
 
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
@@ -447,7 +469,8 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 }
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
-// size and gas constraints. The results are ordered by decreasing priority,
+// size and gas constraints and within the app's per-block limits (see
+// SetBlockLimits). The results are ordered by decreasing priority,
 // with ties broken by increasing order of arrival. Transactions are also
 // grouped together by signer in order of sequence to preserve sequence ordering within a signer.
 //
@@ -456,10 +479,14 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 // If maxBytes < 0, no limit is set on the total size in bytes.
 // If maxGas < 0, no limit is set on the total gas cost.
 //
+// A transaction that does not fit is passed over without counting towards
+// any total, so it does not take the place of a transaction that fits.
+//
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
+	usage := newReapUsage(txmp.BlockLimits())
 
 	var keep []*types.CachedTx
 	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
@@ -468,6 +495,9 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 			for _, wtx := range txSet.txs {
 				if maxBytes >= 0 && totalBytes+wtx.size() > maxBytes ||
 					maxGas >= 0 && totalGas+wtx.gasWanted > maxGas {
+					break
+				}
+				if usage.limited && !usage.add(&wtx.usage) {
 					break
 				}
 				totalBytes += wtx.size()
