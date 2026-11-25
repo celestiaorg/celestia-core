@@ -479,6 +479,7 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 	// The peer chooses the round, so count its remaining requests locally
 	// instead of in its PeerState, which pruning would not bound.
 	remaining := int(wants.MissingPartsCount)
+	var contended, touched bool
 	for _, partIndex := range wants.Parts.GetTrueIndices() {
 		// Indices are ascending, so the rest are parity parts.
 		if partIndex >= total {
@@ -487,7 +488,25 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		if remaining <= 0 {
 			break
 		}
-		if !blockProp.storedPartsBudget.allow() {
+		// Per-peer budgets only matter when another peer is also asking: a
+		// lone peer may use the whole shared budget, as there is no one to be
+		// fair to. A want counts as asking only once it selects a stored part,
+		// so empty or parity-only wants cannot cap other peers.
+		if !touched {
+			contended = blockProp.storedWanters.touch(peer)
+			touched = true
+		}
+		// Take the peer's own token first, so that one peer cannot use up
+		// the budget that all peers share. The token is taken even when no
+		// other peer is asking, so a peer that read a lot while alone is held
+		// back as soon as another peer asks.
+		if !p.storedPartsBudget.allow() && contended {
+			blockProp.Logger.Debug("peer stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
+		// A lone peer leaves a reserve in the shared budget, so a peer that
+		// starts asking is served at once.
+		if !blockProp.allowSharedStoredPart(contended) {
 			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
 			break
 		}
@@ -507,6 +526,9 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			},
 		}
 		if !p.peer.TrySend(e) {
+			// Keep the tokens: the part was read from the store. The peer's
+			// budget keeps a peer that does not read from draining the
+			// shared budget.
 			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
 			break
 		}
@@ -542,7 +564,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
-
 	// todo: add these defensive checks in a better way
 	if cb == nil {
 		return
@@ -569,6 +590,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
+	}
+	if p != nil {
+		// The peer sent a valid part, so it is still answering: retryWants
+		// keeps its requests.
+		p.MarkPartReceived(part.Height, part.Round)
 	}
 
 	if p := blockProp.getPeer(peer); p != nil {
@@ -731,4 +757,14 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}
+}
+
+// allowSharedStoredPart takes a token from the shared stored parts budget. A
+// peer that is asking alone may not take the last StoredPartsPerPeerInitial
+// tokens, which are kept for a peer that starts asking.
+func (blockProp *Reactor) allowSharedStoredPart(contended bool) bool {
+	if contended {
+		return blockProp.storedPartsBudget.allow()
+	}
+	return blockProp.storedPartsBudget.allowAbove(StoredPartsPerPeerInitial)
 }

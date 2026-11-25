@@ -27,7 +27,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/orderedcode v0.0.1
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/grafana/otel-profiling-go v0.6.0
 	github.com/grafana/pyroscope-go v1.4.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
