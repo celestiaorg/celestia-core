@@ -1,7 +1,9 @@
 package propagation
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -165,6 +167,224 @@ func TestHandleWantsStopsWhenSendQueueIsFull(t *testing.T) {
 	defer p.mtx.RUnlock()
 	counts := p.servedParts[height][0].counts
 	require.Equal(t, []uint8{1, 1, 0}, counts[:3])
+}
+
+// sendsPerPart returns how many times each part index was sent to the peer.
+func sendsPerPart(rp *recordingPeer) map[uint32]int {
+	sends := make(map[uint32]int)
+	for _, part := range rp.sentParts() {
+		sends[part.Index]++
+	}
+	return sends
+}
+
+// A part sent without a proof and later asked for with one is served again,
+// and both sends count toward the same cap.
+func TestHandleWantsCountsProofAndNoProofTogether(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	height := cacheTestProposal(t, r, 0, ps)
+	total := int(ps.Total())
+
+	r.handleWants(rp.ID(), wantAllParts(height, 0, ps.Total(), false))
+	require.Len(t, rp.sentParts(), total)
+	require.Empty(t, rp.sentParts()[0].Proof.LeafHash)
+
+	r.handleWants(rp.ID(), wantAllParts(height, 0, ps.Total(), true))
+	sent := rp.sentParts()
+	require.Len(t, sent, 2*total)
+	require.NotEmpty(t, sent[total].Proof.LeafHash, "the catchup want must be served with proofs")
+
+	for i := 0; i < 10; i++ {
+		r.handleWants(rp.ID(), wantAllParts(height, 0, ps.Total(), true))
+		r.handleWants(rp.ID(), wantAllParts(height, 0, ps.Total(), false))
+	}
+	require.Len(t, rp.sentParts(), MaxServesPerPart*total)
+}
+
+// A want that is served only in part, because of its missing parts count,
+// counts only the parts that were sent.
+func TestHandleWantsCountsOnlySentParts(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	height := cacheTestProposal(t, r, 0, ps)
+	total := int(ps.Total())
+
+	want := wantAllParts(height, 0, ps.Total(), false)
+	want.MissingPartsCount = 4
+	r.handleWants(rp.ID(), want)
+	require.Len(t, rp.sentParts(), 4)
+
+	p := r.getPeer(rp.ID())
+	require.NotNil(t, p)
+	p.mtx.RLock()
+	counts := append([]uint8(nil), p.servedParts[height][0].counts...)
+	p.mtx.RUnlock()
+	require.Equal(t, []uint8{1, 1, 1, 1, 0}, counts[:5])
+
+	for i := 0; i < 10*total; i++ {
+		r.handleWants(rp.ID(), want)
+	}
+	sends := sendsPerPart(rp)
+	require.Len(t, sends, total)
+	for index, count := range sends {
+		require.Equal(t, MaxServesPerPart, count, "part %d", index)
+	}
+}
+
+// A part that this node did not have when the peer asked is sent once when it
+// arrives. Repeating the want afterwards is still capped.
+func TestHandleWantsCapsRepeatedWantsAfterParkedWant(t *testing.T) {
+	r, _ := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	ps := makeTestPartSet(t, 1)
+	psh := ps.Header()
+	total := int(ps.Total())
+
+	r.pmtx.Lock()
+	height := r.height
+	r.pmtx.Unlock()
+	r.AddCommitment(height, 0, &psh)
+
+	want := wantAllParts(height, 0, ps.Total(), true)
+	r.handleWants(rp.ID(), want)
+	require.Empty(t, rp.sentParts(), "no part is available yet")
+
+	r.AddBlock(height, 0, ps)
+	require.Eventually(t, func() bool {
+		return len(rp.sentParts()) == total
+	}, 5*time.Second, 10*time.Millisecond, "the parked want is served when the block arrives")
+
+	for i := 0; i < 20; i++ {
+		r.handleWants(rp.ID(), want)
+	}
+	sends := sendsPerPart(rp)
+	require.Len(t, sends, total)
+	for index, count := range sends {
+		require.Equal(t, MaxServesPerPart+1, count, "part %d", index)
+	}
+}
+
+// A want for the latest round follows the latest cached round. A later round
+// with another block gets its own counts, and the earlier round keeps its own.
+func TestHandleWantsAliasRoundFollowsLatestCachedRound(t *testing.T) {
+	r, _ := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	first, second := makeTestPartSet(t, 1), makeTestPartSet(t, 2)
+	total := int(first.Total())
+	const latestRound = int32(-2)
+
+	height := cacheTestProposal(t, r, 0, first)
+	for i := 0; i < 10; i++ {
+		r.handleWants(rp.ID(), wantAllParts(height, latestRound, first.Total(), true))
+	}
+	require.Len(t, rp.sentParts(), MaxServesPerPart*total)
+
+	cacheTestProposal(t, r, 1, second)
+	for i := 0; i < 10; i++ {
+		r.handleWants(rp.ID(), wantAllParts(height, latestRound, second.Total(), true))
+	}
+	sent := rp.sentParts()
+	require.Len(t, sent, 2*MaxServesPerPart*total)
+	for _, part := range sent[MaxServesPerPart*total:] {
+		require.Equal(t, second.GetPart(int(part.Index)).Bytes.Bytes(), part.Data, "part %d", part.Index)
+	}
+
+	// round 0 already reached its cap through the latest round wants
+	r.handleWants(rp.ID(), wantAllParts(height, 0, first.Total(), true))
+	require.Len(t, rp.sentParts(), 2*MaxServesPerPart*total)
+}
+
+// A complete copy of the committed block stays cached after its height is
+// committed, and catchup wants for it are served from the cache. They are
+// capped like any other want.
+func TestHandleWantsCapsRepeatedWantsForCommittedHeight(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	total := int(ps.Total())
+	r.pmtx.Lock()
+	r.proposals[storedTestHeight] = map[int32]*proposalData{
+		0: {block: proptypes.NewCombinedPartSetFromOriginal(ps, false)},
+	}
+	r.pmtx.Unlock()
+	r.storedPartsBudget = newTokenBucket(0, 0) // the block store must not be used
+
+	for i := 0; i < 20; i++ {
+		r.handleWants(rp.ID(), storedWant(ps.Total(), int32(ps.Total()), allOriginal(ps.Total())...))
+	}
+	require.Len(t, rp.sentParts(), MaxServesPerPart*total)
+}
+
+// A want whose bit array does not match the block is not served and leaves no
+// counts behind.
+func TestHandleWantsWithWrongSizeIsNotCounted(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	height := cacheTestProposal(t, r, 0, ps)
+
+	r.handleWants(rp.ID(), wantAllParts(height, 0, ps.Total()+1, true))
+	require.Empty(t, rp.sentParts())
+
+	p := r.getPeer(rp.ID())
+	require.NotNil(t, p)
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
+	require.Empty(t, p.servedParts)
+}
+
+// Wants are handled on the reactor's goroutine while consensus replaces
+// blocks and prunes from its own. The counts must stay consistent, and a
+// block that replaced another must still be served.
+func TestHandleWantsWhileBlockIsReplaced(t *testing.T) {
+	r, _ := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 10_000_000)
+	first, second := makeTestPartSet(t, 1), makeTestPartSet(t, 2)
+	total := int(first.Total())
+	height := cacheTestProposal(t, r, 0, first)
+	p := r.getPeer(rp.ID())
+	require.NotNil(t, p)
+
+	const iterations = 300
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			r.handleWants(rp.ID(), wantAllParts(height, 0, first.Total(), true))
+			r.handleWants(rp.ID(), wantAllParts(height, -2, first.Total(), false))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		// ends on the second block
+		for i := 0; i < iterations; i++ {
+			if i%2 == 0 {
+				r.AddBlock(height, 0, second)
+			} else {
+				r.AddBlock(height, 0, first)
+			}
+		}
+		r.AddBlock(height, 0, second)
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			p.prune(height)
+			p.DeleteRound(height, 1)
+		}
+	}()
+	wg.Wait()
+
+	// replacing the second block with the first drops the counts, so the
+	// first block is served in full whatever was sent before.
+	r.AddBlock(height, 0, first)
+	before := len(rp.sentParts())
+	r.handleWants(rp.ID(), wantAllParts(height, 0, first.Total(), true))
+	sent := rp.sentParts()[before:]
+	require.Len(t, sent, total)
+	for _, part := range sent {
+		require.Equal(t, first.GetPart(int(part.Index)).Bytes.Bytes(), part.Data, "part %d", part.Index)
+	}
 }
 
 func TestPeerState_UnservedParts(t *testing.T) {
