@@ -432,9 +432,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
-			// a reply to a want: the peer asks again if the queue refuses it
-			CanBeDropped: true,
-			Message:      rpart,
+			Message:   rpart,
 		}
 
 		// The peer's send queue is full, so stop.
@@ -504,8 +502,6 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
-			// a reply to a want: the peer asks again if the queue refuses it
-			CanBeDropped: true,
 			Message: &propproto.RecoveryPart{
 				Height: height,
 				Round:  round,
@@ -745,8 +741,6 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 			}
 			e := p2p.Envelope{
 				ChannelID: DataChannel,
-				// a reply to a want: the peer asks again if the queue refuses it
-				CanBeDropped: true,
 				Message: &propproto.RecoveryPart{
 					Height: part.Height,
 					Round:  part.Round,

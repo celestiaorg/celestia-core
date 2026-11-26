@@ -24,10 +24,6 @@ type Envelope struct {
 	// Lazy messages sent with Peer.Send never trigger a low-latency flush; they
 	// leave with the next one or with the flush throttle. Local only, not on the wire.
 	Lazy bool
-	// CanBeDropped marks a message the peer can ask for again, like a reply to a
-	// request. Peer.TrySend refuses it once only the channel's
-	// SendQueueReservedBytes are left. Local only, not on the wire.
-	CanBeDropped bool
 }
 
 // Unwrapper is a Protobuf message that can contain a variety of inner messages

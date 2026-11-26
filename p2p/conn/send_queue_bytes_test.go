@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/cometbft/cometbft/libs/log"
 )
 
 const testByteLimitChannelID = byte(0x01)
@@ -122,69 +120,6 @@ func TestSendQueueBytesAcceptsOversizedMessageInEmptyQueue(t *testing.T) {
 
 	sendNextMessage(t, channel)
 	require.True(t, channel.trySendBytes(smallMessage, false))
-}
-
-func TestSendQueueBytesDroppableMessagesCannotUseReservedBytes(t *testing.T) {
-	channel := newByteLimitedChannel(t, 100, 1000)
-	channel.desc.SendQueueReservedBytes = 300
-	message := make([]byte, 350)
-
-	require.True(t, channel.trySendDroppableBytes(message))
-	require.True(t, channel.trySendDroppableBytes(message))
-	require.False(t, channel.trySendDroppableBytes(message), "droppable messages can fill 700 of the 1000 bytes")
-	require.Equal(t, int64(700), queuedBytes(channel))
-
-	smallMessage := make([]byte, 300)
-	require.True(t, channel.trySendBytes(smallMessage, false), "other messages can use the reserved bytes")
-	require.False(t, channel.trySendBytes(smallMessage, false), "the whole queue is full now")
-	require.Equal(t, int64(1000), queuedBytes(channel))
-}
-
-func TestSendQueueBytesDroppableLimitIgnoredWithoutByteLimit(t *testing.T) {
-	channel := newByteLimitedChannel(t, 100, 0)
-	channel.desc.SendQueueReservedBytes = 300
-	message := make([]byte, 1<<20)
-
-	require.True(t, channel.trySendDroppableBytes(message))
-	require.True(t, channel.trySendDroppableBytes(message), "a channel without a byte limit has no droppable limit either")
-}
-
-// The peer never reads, so the queue only fills up.
-func TestMConnectionTrySendDroppable(t *testing.T) {
-	server, client := NetPipe()
-	t.Cleanup(func() {
-		_ = server.Close()
-		_ = client.Close()
-	})
-
-	const mebibyte = 1 << 20
-	descriptor := &ChannelDescriptor{
-		ID:                     testByteLimitChannelID,
-		Priority:               1,
-		SendQueueCapacity:      100,
-		SendQueueCapacityBytes: 10 * mebibyte,
-		SendQueueReservedBytes: 4 * mebibyte,
-	}
-	noReceive := func(byte, []byte) {}
-	noError := func(interface{}) {}
-	connection := NewMConnectionWithConfig(client, []*ChannelDescriptor{descriptor}, noReceive, noError, DefaultMConnConfig())
-	connection.SetLogger(log.TestingLogger())
-	require.NoError(t, connection.Start())
-	t.Cleanup(func() { _ = connection.Stop() })
-
-	message := make([]byte, mebibyte)
-	droppableAccepted := 0
-	for connection.TrySendDroppable(testByteLimitChannelID, message) {
-		droppableAccepted++
-		require.Less(t, droppableAccepted, 100, "droppable messages must be refused at some point")
-	}
-	require.GreaterOrEqual(t, droppableAccepted, 6, "droppable messages can fill the queue up to the reserved bytes")
-
-	require.True(t, connection.TrySend(testByteLimitChannelID, message), "other messages can use the reserved bytes")
-	require.False(t, connection.TrySendDroppable(testByteLimitChannelID, message))
-
-	status := connection.Status().Channels[0]
-	require.LessOrEqual(t, status.SendQueueBytes, int64(10*mebibyte))
 }
 
 func TestSendQueueBytesConcurrentSendersStayUnderLimit(t *testing.T) {

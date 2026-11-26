@@ -35,20 +35,16 @@ const (
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
 
-	// DataChannelPartsQueueBytes limits the parts queued for one peer in
-	// answer to its wants. Past it, parts are refused and the peer asks again.
+	// DataChannelSendQueueBytes is the most one peer's data channel send queue
+	// can hold, even if the peer stops reading. Past it, messages are refused:
+	// the peer asks for parts again, but compact blocks and haves are not
+	// sent again, so the limit has to stay above what a reading peer queues.
+	//
 	// It fits two 32 MiB blocks (the celestia-app maximum, raise both
 	// together): a peer needs half of a block's parts, 32.2 MiB with proofs,
 	// and wants two blocks when a failed round is followed by a new block.
-	DataChannelPartsQueueBytes = 66 * 1024 * 1024
-
-	// DataChannelReservedQueueBytes is kept free for compact blocks, haves and
-	// pushed parts, which are not sent again if the queue refuses them.
-	DataChannelReservedQueueBytes = 4 * 1024 * 1024
-
-	// DataChannelSendQueueBytes is the most one peer's data channel send queue
-	// can hold, even if the peer stops reading.
-	DataChannelSendQueueBytes = DataChannelPartsQueueBytes + DataChannelReservedQueueBytes
+	// The rest is room for retried parts, compact blocks and haves.
+	DataChannelSendQueueBytes = 80 * 1024 * 1024
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 20000
@@ -204,7 +200,6 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			LowLatency:             true,
 			SendQueueCapacity:      20000,
 			SendQueueCapacityBytes: DataChannelSendQueueBytes,
-			SendQueueReservedBytes: DataChannelReservedQueueBytes,
 			RecvMessageCapacity:    maxMsgSize,
 			MessageType:            &propproto.Message{},
 		},

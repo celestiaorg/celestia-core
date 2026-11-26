@@ -798,20 +798,15 @@ func TestPeerStateEditor(t *testing.T) {
 }
 
 // Only the data channel carries block parts, so only its send queue is limited
-// by bytes. Part of it is reserved, so that a queue full of parts still takes
-// a compact block.
+// by bytes.
 func TestDataChannelSendQueueHasByteLimit(t *testing.T) {
 	reactor := &Reactor{}
-	channels := make(map[byte]*p2p.ChannelDescriptor)
+	byteLimits := make(map[byte]int)
 	for _, channel := range reactor.GetChannels() {
-		channels[channel.ID] = channel
+		byteLimits[channel.ID] = channel.SendQueueCapacityBytes
 	}
 
-	dataChannel := channels[DataChannel]
-	require.Equal(t, DataChannelSendQueueBytes, dataChannel.SendQueueCapacityBytes)
-	require.Equal(t, DataChannelReservedQueueBytes, dataChannel.SendQueueReservedBytes)
-	require.Equal(t, DataChannelPartsQueueBytes, dataChannel.SendQueueCapacityBytes-dataChannel.SendQueueReservedBytes)
-	require.GreaterOrEqual(t, DataChannelReservedQueueBytes, maxMsgSize, "the reserved room must hold at least one message of the largest size")
-
-	require.Zero(t, channels[WantChannel].SendQueueCapacityBytes)
+	require.Equal(t, DataChannelSendQueueBytes, byteLimits[DataChannel])
+	require.Zero(t, byteLimits[WantChannel])
+	require.GreaterOrEqual(t, DataChannelSendQueueBytes, maxMsgSize, "the queue must hold at least one message of the largest size")
 }
