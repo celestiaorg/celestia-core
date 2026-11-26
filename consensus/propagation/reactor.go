@@ -35,6 +35,13 @@ const (
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
 
+	// DataChannelSendQueueBytes is how many bytes of messages can wait in one
+	// peer's data channel send queue. A peer that stops reading can pin at
+	// most this much memory. It is the size of the largest block celestia-app
+	// allows, so raise it if that limit is raised. A peer whose queue is full
+	// is not sent more parts and has to request them again.
+	DataChannelSendQueueBytes = 32 * 1024 * 1024
+
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 20000
 
@@ -184,12 +191,13 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			MessageType:         &propproto.Message{},
 		},
 		{
-			ID:                  DataChannel,
-			Priority:            140,
-			LowLatency:          true,
-			SendQueueCapacity:   20000,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &propproto.Message{},
+			ID:                     DataChannel,
+			Priority:               140,
+			LowLatency:             true,
+			SendQueueCapacity:      20000,
+			SendQueueCapacityBytes: DataChannelSendQueueBytes,
+			RecvMessageCapacity:    maxMsgSize,
+			MessageType:            &propproto.Message{},
 		},
 	}
 }

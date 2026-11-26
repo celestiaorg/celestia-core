@@ -44,6 +44,9 @@ const (
 	defaultSendRate            = int64(512000) // 500KB/s
 	defaultRecvRate            = int64(512000) // 500KB/s
 	defaultSendTimeout         = 10 * time.Second
+	// sendQueueBytesPollInterval is how often a blocking send checks whether a
+	// byte-limited send queue has room again.
+	sendQueueBytesPollInterval = 10 * time.Millisecond
 	defaultPingInterval        = 60 * time.Second
 	defaultPongTimeout         = 45 * time.Second
 )
@@ -782,8 +785,13 @@ type ChannelStatus struct {
 	ID                byte
 	SendQueueCapacity int
 	SendQueueSize     int
-	Priority          int
-	RecentlySent      int64
+	// SendQueueCapacityBytes is the byte limit of the send queue. Zero means
+	// that the queue has no byte limit.
+	SendQueueCapacityBytes int
+	// SendQueueBytes is the total size of the messages in the send queue.
+	SendQueueBytes int64
+	Priority       int
+	RecentlySent   int64
 }
 
 func (c *MConnection) Status() ConnectionStatus {
@@ -795,11 +803,13 @@ func (c *MConnection) Status() ConnectionStatus {
 	for i, channel := range c.channels {
 		channel := channel
 		status.Channels[i] = ChannelStatus{
-			ID:                channel.desc.ID,
-			SendQueueCapacity: cap(channel.sendQueue),
-			SendQueueSize:     int(atomic.LoadInt32(&channel.sendQueueSize)),
-			Priority:          channel.desc.Priority,
-			RecentlySent:      atomic.LoadInt64(&channel.recentlySent),
+			ID:                     channel.desc.ID,
+			SendQueueCapacity:      cap(channel.sendQueue),
+			SendQueueSize:          int(atomic.LoadInt32(&channel.sendQueueSize)),
+			SendQueueCapacityBytes: channel.desc.SendQueueCapacityBytes,
+			SendQueueBytes:         atomic.LoadInt64(&channel.sendQueueBytes),
+			Priority:               channel.desc.Priority,
+			RecentlySent:           atomic.LoadInt64(&channel.recentlySent),
 		}
 	}
 	return status
@@ -808,12 +818,18 @@ func (c *MConnection) Status() ConnectionStatus {
 //-----------------------------------------------------------------------------
 
 type ChannelDescriptor struct {
-	ID                  byte
-	Priority            int
-	SendQueueCapacity   int
-	RecvBufferCapacity  int
-	RecvMessageCapacity int
-	MessageType         proto.Message
+	ID       byte
+	Priority int
+	// SendQueueCapacity is the number of messages the send queue can hold.
+	SendQueueCapacity int
+	// SendQueueCapacityBytes is the total size of the messages the send queue
+	// can hold. Zero means no byte limit, so only SendQueueCapacity applies.
+	// Set it on channels that carry large messages: a peer that stops reading
+	// can then pin at most this many bytes in the queue.
+	SendQueueCapacityBytes int
+	RecvBufferCapacity     int
+	RecvMessageCapacity    int
+	MessageType            proto.Message
 
 	// LowLatency marks latency-critical channels whose messages, unless sent
 	// lazily, are flushed after MConnConfig.FlushLowLatency instead of the flush throttle.
@@ -848,14 +864,16 @@ type queuedMsg struct {
 // TODO: lowercase.
 // NOTE: not goroutine-safe.
 type Channel struct {
-	conn          *MConnection
-	desc          ChannelDescriptor
-	sendQueue     chan queuedMsg
-	sendQueueSize int32 // atomic.
-	recving       []byte
-	sending       []byte
-	sendingLazy   bool  // sending never arms the FlushLowLatency timer
-	recentlySent  int64 // exponential moving average
+	conn           *MConnection
+	desc           ChannelDescriptor
+	sendQueue      chan queuedMsg
+	sendQueueSize  int32 // atomic.
+	sendQueueBytes int64 // atomic. total size of the messages counted by sendQueueSize
+	recving        []byte
+	sending        []byte
+	sendingSize    int   // full size of the message that sending holds the rest of
+	sendingLazy    bool  // sending never arms the FlushLowLatency timer
+	recentlySent   int64 // exponential moving average
 
 	maxPacketMsgPayloadSize int
 
@@ -884,11 +902,18 @@ func (ch *Channel) SetLogger(l log.Logger) {
 // Goroutine-safe
 // Times out (and returns false) after defaultSendTimeout
 func (ch *Channel) sendBytes(bytes []byte, lazy bool) bool {
+	timeout := time.NewTimer(defaultSendTimeout)
+	defer timeout.Stop()
+
+	if !ch.waitForSendQueueBytes(len(bytes), timeout.C) {
+		return false
+	}
 	select {
 	case ch.sendQueue <- queuedMsg{bytes, lazy}:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
 		return true
-	case <-time.After(defaultSendTimeout):
+	case <-timeout.C:
+		ch.releaseSendQueueBytes(len(bytes))
 		return false
 	}
 }
@@ -897,12 +922,76 @@ func (ch *Channel) sendBytes(bytes []byte, lazy bool) bool {
 // Nonblocking, returns true if successful.
 // Goroutine-safe
 func (ch *Channel) trySendBytes(bytes []byte, lazy bool) bool {
+	// A full queue is refused before any bytes are reserved, so that senders
+	// to a full queue don't contend on the byte count.
+	if len(ch.sendQueue) == cap(ch.sendQueue) {
+		return false
+	}
+	if !ch.reserveSendQueueBytes(len(bytes)) {
+		return false
+	}
 	select {
 	case ch.sendQueue <- queuedMsg{bytes, lazy}:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
 		return true
 	default:
+		ch.releaseSendQueueBytes(len(bytes))
 		return false
+	}
+}
+
+// reserveSendQueueBytes counts a message of the given size towards the send
+// queue's bytes. It returns false, and counts nothing, if the channel has a
+// byte limit and the message doesn't fit. A message always fits in an empty
+// queue, so a message bigger than the limit can still be sent.
+// Goroutine-safe
+func (ch *Channel) reserveSendQueueBytes(size int) bool {
+	messageBytes := int64(size)
+	limit := int64(ch.desc.SendQueueCapacityBytes)
+	hasLimit := limit > 0
+
+	for {
+		queuedBytes := atomic.LoadInt64(&ch.sendQueueBytes)
+		queueIsEmpty := queuedBytes == 0
+		overLimit := queuedBytes+messageBytes > limit
+		if hasLimit && overLimit && !queueIsEmpty {
+			return false
+		}
+		// Another sender may have changed the count since it was loaded. Check
+		// again with the new count in that case.
+		if atomic.CompareAndSwapInt64(&ch.sendQueueBytes, queuedBytes, queuedBytes+messageBytes) {
+			return true
+		}
+	}
+}
+
+// releaseSendQueueBytes stops counting a message of the given size towards the
+// send queue's bytes.
+// Goroutine-safe
+func (ch *Channel) releaseSendQueueBytes(size int) {
+	atomic.AddInt64(&ch.sendQueueBytes, -int64(size))
+}
+
+// waitForSendQueueBytes reserves room for a message of the given size. If the
+// send queue has no room, it checks again every sendQueueBytesPollInterval
+// until there is room or the timeout fires. It returns false on timeout.
+// Goroutine-safe
+func (ch *Channel) waitForSendQueueBytes(size int, timeout <-chan time.Time) bool {
+	if ch.reserveSendQueueBytes(size) {
+		return true
+	}
+
+	ticker := time.NewTicker(sendQueueBytesPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if ch.reserveSendQueueBytes(size) {
+				return true
+			}
+		case <-timeout:
+			return false
+		}
 	}
 }
 
@@ -927,6 +1016,7 @@ func (ch *Channel) isSendPending() bool {
 		}
 		m := <-ch.sendQueue
 		ch.sending, ch.sendingLazy = m.bytes, m.lazy
+		ch.sendingSize = len(m.bytes)
 	}
 	return true
 }
@@ -941,6 +1031,8 @@ func (ch *Channel) nextPacketMsg() tmp2p.PacketMsg {
 		packet.EOF = true
 		ch.sending = nil
 		atomic.AddInt32(&ch.sendQueueSize, -1) // decrement sendQueueSize
+		ch.releaseSendQueueBytes(ch.sendingSize)
+		ch.sendingSize = 0
 	} else {
 		packet.Data = ch.sending[:maxSize]
 		packet.EOF = false
