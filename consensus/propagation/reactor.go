@@ -36,11 +36,14 @@ const (
 	WantChannel = byte(0x51)
 
 	// DataChannelPartsQueueBytes is how many bytes of one peer's data channel
-	// send queue the parts sent in answer to its wants can fill. It is the
-	// size of the largest block celestia-app allows, so raise it if that limit
-	// is raised. A peer whose queue is this full is not sent more parts and
-	// has to request them again.
-	DataChannelPartsQueueBytes = 32 * 1024 * 1024
+	// send queue the parts sent in answer to its wants can fill. A peer whose
+	// queue is this full is not sent more parts and has to request them again.
+	//
+	// It has room for two blocks of the largest size celestia-app allows
+	// (32 MiB), so raise it if that limit is raised. A peer needs half of a
+	// block's parts, about 32.2 MiB with proofs. It can want two blocks at
+	// once when a round fails and the next round proposes a different block.
+	DataChannelPartsQueueBytes = 70 * 1024 * 1024
 
 	// DataChannelReservedQueueBytes is extra room in the data channel send
 	// queue that those parts can't use. It is kept for compact blocks, haves
