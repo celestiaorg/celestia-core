@@ -1,6 +1,6 @@
 # Model checking of the compact-block propagation <-> consensus hand-off.
 # See README.md. Every target is non-interactive and exits non-zero on
-# failure. Requires node/npm (for quint), java 17+ and curl.
+# failure. Requires node/npm (for quint), java 21+ and curl.
 
 QUINT_VERSION      := 0.34.0
 APALACHE_VERSION   := 0.62.4
