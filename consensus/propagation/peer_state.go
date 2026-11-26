@@ -37,12 +37,8 @@ const (
 	// the lowest of a full height, so it is never evicted.
 	MaxPeerStateRoundsPerHeight = 32
 
-	// MaxServesPerPart is how many times this node sends one part of a cached
-	// proposal to one peer in answer to its wants. An honest peer needs a part
-	// once, or twice if it first got the part without a proof and later asks
-	// for it with one during catchup. One more send covers a retry after the
-	// peer dropped a part. Wants past the cap are not served, so repeating a
-	// want cannot make this node queue the same parts without bound.
+	// MaxServesPerPart is how many times one part of a cached proposal is
+	// sent to one peer. It is above one so that honest retries still work.
 	MaxServesPerPart = 3
 )
 
@@ -70,10 +66,8 @@ type PeerState struct {
 	canRequest        chan struct{}
 	remainingRequests map[int64]map[int32]int
 
-	// servedParts counts the parts sent to the peer in answer to its wants,
-	// indexed by the height and round the proposal is cached at. The reactor
-	// only adds entries for proposals it has cached, and prune drops them on
-	// commit, so the proposal cache bounds this map.
+	// servedParts counts the parts sent to the peer, by height and round.
+	// Entries are pruned on commit.
 	servedParts map[int64]map[int32]*servedParts
 
 	logger log.Logger
@@ -614,21 +608,17 @@ func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
 	return partState.everRequested.GetIndex(int(index))
 }
 
-// servedParts counts how many times each part of one block was sent to a
-// peer in answer to its wants.
+// servedParts counts how many times each part of one block was sent to a peer.
 type servedParts struct {
-	// blockHash is the part set hash of the block the counts belong to. The
-	// block cached at a height and round can be replaced by another one, and
-	// counts for the old block must not apply to the new one.
+	// blockHash is the part set hash of the block the counts belong to.
 	blockHash []byte
-	// counts holds the number of sends per part index.
+	// counts is the number of sends per part index.
 	counts []uint8
 }
 
-// UnservedParts returns the parts in wanted that were sent to the peer fewer
-// than MaxServesPerPart times. The counts are kept per height, round and
-// block: if another block was tracked at this height and round, its counts
-// are dropped first.
+// UnservedParts returns the wanted parts that were sent to the peer fewer than
+// MaxServesPerPart times. Counts for another block at this height and round
+// are dropped.
 func (d *PeerState) UnservedParts(height int64, round int32, blockHash []byte, wanted *bits.BitArray) *bits.BitArray {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -658,8 +648,7 @@ func (d *PeerState) UnservedParts(height int64, round int32, blockHash []byte, w
 }
 
 // RecordServedParts counts one send of each given part to the peer. It does
-// nothing if the block tracked at this height and round is no longer the one
-// the parts belong to.
+// nothing if another block is now tracked at this height and round.
 func (d *PeerState) RecordServedParts(height int64, round int32, blockHash []byte, partIndices []int) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()

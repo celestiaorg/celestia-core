@@ -405,11 +405,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	// Skip the parts this peer was already sent MaxServesPerPart times, so a
-	// repeated want is not served again. The counts are kept under the round
-	// the proposal is cached at and the hash of its block, which is what is
-	// actually sent: the peer may name the latest round by any round below -1,
-	// and the block cached at a round can be replaced.
+	// Skip the parts this peer was already sent MaxServesPerPart times.
 	blockHash := parts.Original().Header().Hash
 	toSend := p.UnservedParts(height, cachedRound, blockHash, canSend)
 
@@ -439,8 +435,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			Message:   rpart,
 		}
 
-		// A failed send means the peer's send queue is full. Stop here instead
-		// of building a message for every remaining part only to drop it.
+		// The peer's send queue is full, so stop.
 		if !p.peer.TrySend(e) {
 			blockProp.Logger.Debug("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			break

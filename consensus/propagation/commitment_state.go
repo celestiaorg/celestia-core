@@ -227,8 +227,7 @@ func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) 
 }
 
 // getCachedStateAndRound is getCachedState that also returns the round the
-// entry is cached at. That round differs from the requested one when the
-// requested round is below -1, which selects the latest cached round.
+// entry is cached at.
 func (p *ProposalCache) getCachedStateAndRound(height int64, round int32, catchup bool) (cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, cachedRound int32, has bool, committed bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
