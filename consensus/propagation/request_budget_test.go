@@ -128,7 +128,8 @@ func TestSendWantsWithinBudget(t *testing.T) {
 		go func(peer *PeerState) {
 			defer wg.Done()
 			wants := wantAllParts(height, round, totalParts, missing)
-			require.NoError(t, receiver.sendWantsWithinBudget(peer, wants, parts))
+			_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
+			require.NoError(t, err)
 		}(peer)
 	}
 	wg.Wait()
@@ -159,7 +160,8 @@ func TestSendWantsSkipsHeldParts(t *testing.T) {
 	holdFirstParts(t, parts, partSet, heldCount)
 
 	peer := receiver.getPeers()[0]
-	require.NoError(t, receiver.sendWantsWithinBudget(peer, wants, parts))
+	partsToAskLater, err := receiver.sendWantsWithinBudget(peer, wants, parts)
+	require.NoError(t, err)
 
 	requested := receiver.requestedParts(height, round, totalParts)
 	for i := 0; i < heldCount; i++ {
@@ -171,6 +173,13 @@ func TestSendWantsSkipsHeldParts(t *testing.T) {
 	maxPerPeer, _ := requestLimits(missing, totalParts)
 	require.Equal(t, maxPerPeer, len(requested.GetTrueIndices()))
 	require.Equal(t, int32(missing), wants.MissingPartsCount)
+
+	// the rest of the parts we don't have are kept to ask this peer later.
+	require.Len(t, partsToAskLater, totalParts-heldCount-maxPerPeer)
+	for _, index := range partsToAskLater {
+		require.GreaterOrEqual(t, index, heldCount, "kept part %d that we already have", index)
+		require.False(t, requested.GetIndex(index), "kept part %d that we already requested", index)
+	}
 }
 
 // TestRequestLimits checks the numbers of the request budget.
@@ -231,11 +240,13 @@ func TestSilentPeersLeaveEnoughBudget(t *testing.T) {
 			// their requests stay open.
 			for _, peer := range silentPeers {
 				wants := wantAllParts(height, round, totalParts, missing)
-				require.NoError(t, receiver.sendWantsWithinBudget(peer, wants, parts))
+				_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
+				require.NoError(t, err)
 			}
 			for _, peer := range honestPeers {
 				wants := wantAllParts(height, round, totalParts, missing)
-				require.NoError(t, receiver.sendWantsWithinBudget(peer, wants, parts))
+				_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
+				require.NoError(t, err)
 			}
 
 			askedFromHonest := 0
@@ -308,4 +319,46 @@ func countRequestedParts(reactor *Reactor, height int64, round int32) int {
 		}
 	}
 	return requested
+}
+
+// TestSinglePeerServesWholeBlock checks that a node with one peer and none of
+// the block's txs gets the whole block from that peer, without waiting for
+// the retry.
+func TestSinglePeerServesWholeBlock(t *testing.T) {
+	const (
+		txCount = 250
+		height  = int64(1)
+		round   = int32(0)
+	)
+	reactors, switches := createTestReactors(2, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	txs := make([]types.Tx, txCount)
+	for i := range txs {
+		txs[i] = randomBytes(4900 + i*8)
+	}
+	commit := state.MakeTestCommit(t, sm, pv, time.Now())
+	block, partSet, err := sm.MakeBlock(height, types.Data{Txs: txs}, commit, nil, cmtrand.Bytes(20))
+	require.NoError(t, err)
+
+	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
+	for i, pos := range partSet.TxPos {
+		metaData[i] = proptypes.TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()}
+	}
+
+	proposal := types.NewProposal(height, round, -1, types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()})
+	protoProposal := proposal.ToProto()
+	require.NoError(t, mockPrivVal.SignProposal(TestChainID, protoProposal))
+	proposal.Signature = protoProposal.Signature
+
+	proposer, receiver := reactors[0], reactors[1]
+	require.NoError(t, proposer.ProposeBlock(proposal, partSet, metaData))
+
+	// well under RetryTime, so the retry can't be what completes the block.
+	require.Eventually(t, func() bool {
+		_, parts, _, has := receiver.getAllState(height, round, false)
+		return has && parts.IsComplete()
+	}, RetryTime/2, 5*time.Millisecond)
 }

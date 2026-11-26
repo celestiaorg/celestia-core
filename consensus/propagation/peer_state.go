@@ -452,6 +452,19 @@ func (d *PeerState) RequestsReady() {
 	}
 }
 
+// requeueHaves puts haves back in the queue, so the parts can be requested
+// from this peer later.
+func (d *PeerState) requeueHaves(height int64, round int32, partIndexes []int) {
+	for _, partIndex := range partIndexes {
+		have := request{height: height, round: round, index: uint32(partIndex)}
+		select {
+		case d.receivedHaves <- have:
+		default:
+			// the queue is full. The retry will ask for this part.
+		}
+	}
+}
+
 func (d *PeerState) CanRequest() chan struct{} {
 	return d.canRequest
 }
