@@ -161,7 +161,7 @@ func TestProposePushesUncoveredParts(t *testing.T) {
 
 // TestProposeAdvertisesFirstAndLastWhenNothingIsPushed checks a peer still
 // learns the proposer has the first and last part when it pushes nothing, and
-// requests them.
+// gets the whole block.
 func TestProposeAdvertisesFirstAndLastWhenNothingIsPushed(t *testing.T) {
 	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
@@ -176,9 +176,15 @@ func TestProposeAdvertisesFirstAndLastWhenNothingIsPushed(t *testing.T) {
 	proposer, receiver := reactors[0], reactors[1]
 	require.NoError(t, proposer.ProposeBlock(prop, partSet, metaData))
 
+	// the receiver doesn't have to request both of them: it can also rebuild
+	// the block from one of them and a parity part.
 	require.Eventually(t, func() bool {
-		p := receiver.getPeer(proposer.self)
-		return p.Requested(prop.Height, prop.Round, 0) && p.Requested(prop.Height, prop.Round, lastIndex)
+		haves, has := receiver.getPeer(proposer.self).GetHaves(prop.Height, prop.Round)
+		if !has || !haves.GetIndex(0) || !haves.GetIndex(int(lastIndex)) {
+			return false
+		}
+		_, parts, _, has := receiver.getAllState(prop.Height, prop.Round, false)
+		return has && parts.IsComplete()
 	}, 5*time.Second, 20*time.Millisecond)
 }
 
