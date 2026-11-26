@@ -21,7 +21,7 @@ TRACES   := traces
 SAMPLES  ?= 20000
 STEPS    ?= 60
 
-.PHONY: all deps typecheck test simulate verify verify-cap2 gate liveness liveness-full traces clean
+.PHONY: all deps typecheck test simulate verify verify-cap2 gate liveness liveness-full traces replay clean
 
 all: typecheck test simulate verify gate liveness
 
@@ -91,6 +91,13 @@ liveness: deps
 liveness-full: deps
 	$(TLC) --main live --step liveStep --temporal L1_eventualCompletion
 
+# rare scenarios the random runs do not reach: the shortest run quint finds
+# that reaches a goal, written as a violation of the goal's negation. quint
+# exits non-zero when it finds one, which is the expected outcome here.
+WITNESS := ./expect_witness.sh $(QUINT) run $(INST) --main fixedTraced --max-samples 50000 --max-steps 40
+REPLAY_TRACES ?= 200
+REPLAY_STEPS  ?= 50
+
 # representative ITF traces: one per scenario test, plus random runs of the
 # fixed model.
 traces: deps
@@ -101,6 +108,25 @@ traces: deps
 	$(QUINT) test --main fixedTest $(TESTS) --out-itf '$(TRACES)/fixed_{test}.itf.json'
 	$(QUINT) run $(INST) --main fixedTraced --seed 0x1 --max-samples 3 --max-steps 40 --n-traces 3 \
 	  --invariants $(SAFETY) --out-itf '$(TRACES)/fixed_random_{seq}.itf.json'
+	$(WITNESS) --seed 0x7 --invariant 'not(lastAction.kind == "consApply" and not(lastAction.accepted))' \
+	  --out-itf '$(TRACES)/fixed_witness_cachedConflict.itf.json'
+	$(WITNESS) --seed 0x7 --invariant 'not(hist.fwd.filter(x => x._1 == 0).size() >= 2)' \
+	  --out-itf '$(TRACES)/fixed_witness_secondForward.itf.json'
+	$(WITNESS) --seed 0x7 --invariant 'not(lastAction.kind == "part" and lastAction.part == "parity" and lastAction.accepted and recv.pc == "sendParts")' \
+	  --out-itf '$(TRACES)/fixed_witness_decodeByParity.itf.json'
+	$(WITNESS) --seed 0x7 --invariant 'not(lastAction.kind == "part" and lastAction.corrupt and lastAction.proof and prop.entries.get(lastAction.round).kind == "stub")' \
+	  --out-itf '$(TRACES)/fixed_witness_corruptOnStub.itf.json'
+	$(WITNESS) --seed 0x3 --invariant 'not(lastAction.kind == "recvSendProp" and lastAction.block == "X")' \
+	  --out-itf '$(TRACES)/fixed_witness_xViaStub.itf.json'
+
+# Conformance: replay fresh random traces of the fixed model, and the
+# committed traces, against the real reactor (consensus/propagation,
+# TestMBT*). quint prints the seed it used.
+replay: deps
+	rm -rf _replay && mkdir -p _replay
+	$(QUINT) run $(INST) --main fixedTraced --max-samples $(REPLAY_TRACES) --n-traces $(REPLAY_TRACES) \
+	  --max-steps $(REPLAY_STEPS) --out-itf '_replay/t_{seq}.itf.json'
+	cd ../../.. && MBT_TRACE_DIR='$(CURDIR)/_replay' go test -count=1 -run 'TestMBT' ./consensus/propagation
 
 clean:
-	rm -rf _apalache-out
+	rm -rf _apalache-out _replay

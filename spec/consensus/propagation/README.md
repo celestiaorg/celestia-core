@@ -95,7 +95,7 @@ indexes, `par` = number of held parity parts.
 |---|---|---|
 | 1 | One height; `Prune(H)` only clears unverified proposals. No height change, no block store contents | bugs across heights, `serveCommitted`, `handleStoredWants`, catch-up marking on height change |
 | 2 | Signatures: only proposer-signed compact blocks exist; validation fails only on the round. A peer cannot forge. Forged compact blocks (which `StoreUnverifiedProposal` also caches) are not sent | a forged block overwriting the sender's own unverified slot (affects only that peer's slot) |
-| 3 | Erasure coding: "any `K` of `2K` parts of a full entry decode it"; decoding rebuilds all originals and parity at once | encoder-specific failures, `IsDecoding` races |
+| 3 | Erasure coding: "any `K` of `2K` parts of a full entry decode it"; decoding rebuilds all originals and parity at once. Completing the originals without decoding also adds the parity in the same step (`withParity`); in Go `buildParity` runs after the parked `partChan` sends finish | encoder-specific failures, `IsDecoding` races |
 | 4 | Part identity: a part is genuine or corrupt; corrupt parts always fail verification. Parts carry only the round into `partChan` | parts of an orphaned (replaced) part set that is decoded later still being sent to consensus (`handleRecoveryPart` decodes the part set pointer it read; the model decodes the current entry only) |
 | 5 | Canonical part indexes: the environment sends the highest missing original outside the mempool set, then parity in increasing order (indexes of one kind are interchangeable; mempool overlap is kept minimal, which maximises sends) | orders where the mempool overlaps parts already received (fewer sends) |
 | 6 | Requests: `reqO`/`reqP` flags per (peer, round): "the missing originals / parity were requested". Haves set them at once (the `requestFromPeer` goroutine is folded in); `ConcurrentRequestLimit`, `ReqLimit`, request expiry and per-index request bits are not modelled | liveness problems caused by request limits or expiry; over-admission of parts (sound for safety, optimistic for L1) |
@@ -211,6 +211,27 @@ in the model are canonical (abstraction 5); the mempool mask of the harness
 maps to transactions, not part indexes (`MEMPOOL` = 1 means "original 0 is
 rebuildable").
 
+## Conformance (trace replay)
+
+`consensus/propagation/mbt_itf_test.go` and `mbt_replay_test.go` replay ITF
+traces of this model against the real reactor, through the fuzz harness of
+`reactor_fuzz_test.go`. The header of `mbt_replay_test.go` states exactly
+which observables are compared after each step and which are not.
+
+| test | input | check |
+|---|---|---|
+| `TestMBTReplayFixedTraces` | `traces/fixed_*.itf.json` | conformance: every step is compared; a trace that diverges from Go's schedule fails |
+| `TestMBTRevertedTraces` | `traces/{prefix,forwardOnceOnly,asyncOnly}_*.itf.json` | regression, not conformance: the fixed code forwards each (round, identity) at most once and no consensus call blocks |
+| `TestMBTReplayTraceDir` | `$MBT_TRACE_DIR/*.itf.json` (skipped when unset) | conformance on fresh random traces; `make replay` generates them |
+
+The first two run in the regular `go test`. `make replay` and `make all`
+run nightly (`.github/workflows/formal-verification-nightly.yml`).
+
+`traces/fixed_witness_*` are scenarios the random runs do not reach
+(a conflicting cached compact block, a second forward after a commitment,
+decoding by parity, a corrupt part on a stub, `X` forwarded through a stub).
+`make traces` regenerates them from fixed seeds.
+
 ## How to run
 
 ```
@@ -223,9 +244,10 @@ make gate        # ab6a3df reverted (fully and each half): requires S1 and S2 vi
 make liveness    # TLC: L1 on liveOneRound, plus the vacuity check
 make all         # all of the above (about 13 min)
 
-make verify-cap2      # verify with capacities 2 (long; see results)
+make verify-cap2      # verify with capacities 2 (wants a larger machine; see results)
 make liveness-full    # L1 on rounds 0 and 1 (about 47 min)
 make traces           # rewrites traces/
+make replay           # conformance: fresh random traces and traces/ replayed against the Go reactor
 ```
 
 Pinned: quint 0.34.0, Apalache 0.62.4 (its jar carries the TLC that
@@ -253,7 +275,8 @@ make target (including quint's compilation, about 10 s per TLC run).
 | `gate` total | | | | 96 s |
 | `liveness` | L1 on `liveOneRound` | exhaustive: 3,201 states | holds | 18 s |
 | | vacuity: L1 without fairness | | violated (expected) | 16 s |
-| `verify-cap2` | `fixedIdentityCap2` | stopped by a 29 min limit at 21,728,415 states, depth 41, queue 301 k and shrinking; `fixedPartsCap2` not run | no violation found before the stop (incomplete) | > 29 min |
+| `verify-cap2` | `fixedIdentityCap2` (48 cores, 200 GB heap) | exhaustive: 6,454,488 states, depth 31 | hold | 40 s |
+| | `fixedPartsCap2` (same machine) | exhaustive: 22,691,085 states, depth 58 | hold | 188 s |
 | `liveness-full` | L1 on `live` (rounds 0, 1) | exhaustive: 7,733,064 states, depth 60 | holds | 47 min (3 workers) |
 
 S1q = `S1_noQueueCycle`.
@@ -261,6 +284,6 @@ S1q = `S1_noQueueCycle`.
 
 Coverage statement: S1, S2 and S3 (the forward decision) hold for
 every reachable state of the two bounded configurations above (one height,
-two rounds, `K = 4`, capacities 1, two peers), under the abstractions listed
-here. The combined configuration is only simulated. L1 holds for the honest
+two rounds, `K = 4`, two peers), with channel capacities 1 and 2, under the
+abstractions listed here. The combined configuration is only simulated. L1 holds for the honest
 environment with a silent second peer.
