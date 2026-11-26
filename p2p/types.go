@@ -24,6 +24,11 @@ type Envelope struct {
 	// Lazy messages sent with Peer.Send never trigger a low-latency flush; they
 	// leave with the next one or with the flush throttle. Local only, not on the wire.
 	Lazy bool
+	// Bulk marks a message that the peer can ask for again, like a reply to a
+	// request. With Peer.TrySend, a bulk message is refused once the send queue
+	// holds SendQueueCapacityBytes minus SendQueueReservedBytes, which leaves
+	// the reserved room to other messages. Local only, not on the wire.
+	Bulk bool
 }
 
 // Unwrapper is a Protobuf message that can contain a variety of inner messages

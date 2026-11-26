@@ -420,6 +420,17 @@ func (c *MConnection) queueSend(chID byte, msgBytes []byte, lazy bool) bool {
 // Queues a message to be sent to channel.
 // Nonblocking, returns true if successful.
 func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
+	return c.tryQueueSend(chID, msgBytes, false)
+}
+
+// TrySendBulk is TrySend for a message that the peer can ask for again. It is
+// refused earlier than other messages: it can't use the channel's
+// SendQueueReservedBytes.
+func (c *MConnection) TrySendBulk(chID byte, msgBytes []byte) bool {
+	return c.tryQueueSend(chID, msgBytes, true)
+}
+
+func (c *MConnection) tryQueueSend(chID byte, msgBytes []byte, bulk bool) bool {
 	if !c.IsRunning() {
 		return false
 	}
@@ -433,7 +444,11 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 		return false
 	}
 
-	ok = channel.trySendBytes(msgBytes, false)
+	if bulk {
+		ok = channel.trySendBulkBytes(msgBytes)
+	} else {
+		ok = channel.trySendBytes(msgBytes, false)
+	}
 	if ok {
 		// Wake up sendRoutine if necessary
 		select {
@@ -827,6 +842,10 @@ type ChannelDescriptor struct {
 	// Set it on channels that carry large messages: a peer that stops reading
 	// can then pin at most this many bytes in the queue.
 	SendQueueCapacityBytes int
+	// SendQueueReservedBytes is the part of SendQueueCapacityBytes that bulk
+	// messages (see MConnection.TrySendBulk) can't use. It keeps room for
+	// messages that are not sent again when the queue is full of replies.
+	SendQueueReservedBytes int
 	RecvBufferCapacity     int
 	RecvMessageCapacity    int
 	MessageType            proto.Message
@@ -905,7 +924,8 @@ func (ch *Channel) sendBytes(bytes []byte, lazy bool) bool {
 	timeout := time.NewTimer(defaultSendTimeout)
 	defer timeout.Stop()
 
-	if !ch.waitForSendQueueBytes(len(bytes), timeout.C) {
+	byteLimit := ch.sendQueueByteLimit(false)
+	if !ch.waitForSendQueueBytes(len(bytes), byteLimit, timeout.C) {
 		return false
 	}
 	select {
@@ -922,12 +942,41 @@ func (ch *Channel) sendBytes(bytes []byte, lazy bool) bool {
 // Nonblocking, returns true if successful.
 // Goroutine-safe
 func (ch *Channel) trySendBytes(bytes []byte, lazy bool) bool {
+	return ch.tryQueue(bytes, lazy, ch.sendQueueByteLimit(false))
+}
+
+// trySendBulkBytes is trySendBytes for a bulk message, which can't use the
+// reserved bytes of the send queue.
+// Goroutine-safe
+func (ch *Channel) trySendBulkBytes(bytes []byte) bool {
+	return ch.tryQueue(bytes, false, ch.sendQueueByteLimit(true))
+}
+
+// sendQueueByteLimit returns how many bytes the send queue can hold for a
+// message. Zero means no byte limit.
+func (ch *Channel) sendQueueByteLimit(bulk bool) int64 {
+	limit := int64(ch.desc.SendQueueCapacityBytes)
+	if limit <= 0 {
+		return 0
+	}
+	if !bulk {
+		return limit
+	}
+	bulkLimit := limit - int64(ch.desc.SendQueueReservedBytes)
+	if bulkLimit < 1 {
+		// zero would mean no limit
+		return 1
+	}
+	return bulkLimit
+}
+
+func (ch *Channel) tryQueue(bytes []byte, lazy bool, byteLimit int64) bool {
 	// A full queue is refused before any bytes are reserved, so that senders
 	// to a full queue don't contend on the byte count.
 	if len(ch.sendQueue) == cap(ch.sendQueue) {
 		return false
 	}
-	if !ch.reserveSendQueueBytes(len(bytes)) {
+	if !ch.reserveSendQueueBytes(len(bytes), byteLimit) {
 		return false
 	}
 	select {
@@ -941,13 +990,12 @@ func (ch *Channel) trySendBytes(bytes []byte, lazy bool) bool {
 }
 
 // reserveSendQueueBytes counts a message of the given size towards the send
-// queue's bytes. It returns false, and counts nothing, if the channel has a
-// byte limit and the message doesn't fit. A message always fits in an empty
-// queue, so a message bigger than the limit can still be sent.
+// queue's bytes. It returns false, and counts nothing, if the message would
+// put the queue over limit. A limit of zero means no limit. A message always
+// fits in an empty queue, so a message bigger than the limit can still be sent.
 // Goroutine-safe
-func (ch *Channel) reserveSendQueueBytes(size int) bool {
+func (ch *Channel) reserveSendQueueBytes(size int, limit int64) bool {
 	messageBytes := int64(size)
-	limit := int64(ch.desc.SendQueueCapacityBytes)
 	hasLimit := limit > 0
 
 	for {
@@ -976,8 +1024,8 @@ func (ch *Channel) releaseSendQueueBytes(size int) {
 // send queue has no room, it checks again every sendQueueBytesPollInterval
 // until there is room or the timeout fires. It returns false on timeout.
 // Goroutine-safe
-func (ch *Channel) waitForSendQueueBytes(size int, timeout <-chan time.Time) bool {
-	if ch.reserveSendQueueBytes(size) {
+func (ch *Channel) waitForSendQueueBytes(size int, limit int64, timeout <-chan time.Time) bool {
+	if ch.reserveSendQueueBytes(size, limit) {
 		return true
 	}
 
@@ -986,7 +1034,7 @@ func (ch *Channel) waitForSendQueueBytes(size int, timeout <-chan time.Time) boo
 	for {
 		select {
 		case <-ticker.C:
-			if ch.reserveSendQueueBytes(size) {
+			if ch.reserveSendQueueBytes(size, limit) {
 				return true
 			}
 		case <-timeout:
