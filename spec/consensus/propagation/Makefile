@@ -1,6 +1,7 @@
 # Model checking of the compact-block propagation <-> consensus hand-off.
 # See README.md. Every target is non-interactive and exits non-zero on
-# failure. Requires node/npm (for quint), java 21+ and curl.
+# failure. Requires Linux x86-64 (the pinned evaluator binary), node/npm (for
+# quint), java 21+, curl and sha256sum.
 
 QUINT_VERSION      := 0.34.0
 APALACHE_VERSION   := 0.62.4
@@ -30,6 +31,8 @@ all: typecheck test simulate verify gate liveness
 # and checks its hash. Apalache (whose jar also carries TLC) is downloaded by
 # the first `quint verify`.
 deps:
+	@p="$$(uname -s)-$$(uname -m)"; if [ "$$p" != "Linux-x86_64" ]; then \
+	  echo "these targets pin the Linux x86-64 quint evaluator; found $$p"; exit 1; fi
 	@v=$$($(QUINT) --version); if [ "$$v" != "$(QUINT_VERSION)" ]; then \
 	  echo "need quint $(QUINT_VERSION), found '$$v' (npm i -g @informalsystems/quint@$(QUINT_VERSION))"; exit 1; fi
 	@if [ ! -x "$(EVALUATOR_DIR)/quint_evaluator" ]; then \
