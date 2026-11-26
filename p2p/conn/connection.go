@@ -44,8 +44,8 @@ const (
 	defaultSendRate            = int64(512000) // 500KB/s
 	defaultRecvRate            = int64(512000) // 500KB/s
 	defaultSendTimeout         = 10 * time.Second
-	// sendQueueBytesPollInterval is how often a blocking send checks whether a
-	// byte-limited send queue has room again.
+	// sendQueueBytesPollInterval is how often a blocking send rechecks a send
+	// queue that is at its byte limit.
 	sendQueueBytesPollInterval = 10 * time.Millisecond
 	defaultPingInterval        = 60 * time.Second
 	defaultPongTimeout         = 45 * time.Second
@@ -423,9 +423,8 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 	return c.tryQueueSend(chID, msgBytes, false)
 }
 
-// TrySendBulk is TrySend for a message that the peer can ask for again. It is
-// refused earlier than other messages: it can't use the channel's
-// SendQueueReservedBytes.
+// TrySendBulk is TrySend for a message the peer can ask for again. It can't
+// use the channel's SendQueueReservedBytes.
 func (c *MConnection) TrySendBulk(chID byte, msgBytes []byte) bool {
 	return c.tryQueueSend(chID, msgBytes, true)
 }
@@ -800,8 +799,7 @@ type ChannelStatus struct {
 	ID                byte
 	SendQueueCapacity int
 	SendQueueSize     int
-	// SendQueueCapacityBytes is the byte limit of the send queue. Zero means
-	// that the queue has no byte limit.
+	// SendQueueCapacityBytes is the send queue's byte limit. Zero means no limit.
 	SendQueueCapacityBytes int
 	// SendQueueBytes is the total size of the messages in the send queue.
 	SendQueueBytes int64
@@ -837,14 +835,13 @@ type ChannelDescriptor struct {
 	Priority int
 	// SendQueueCapacity is the number of messages the send queue can hold.
 	SendQueueCapacity int
-	// SendQueueCapacityBytes is the total size of the messages the send queue
-	// can hold. Zero means no byte limit, so only SendQueueCapacity applies.
-	// Set it on channels that carry large messages: a peer that stops reading
-	// can then pin at most this many bytes in the queue.
+	// SendQueueCapacityBytes limits the total size of the queued messages, so
+	// a peer that stops reading can't pin more than this. Zero means no byte
+	// limit.
 	SendQueueCapacityBytes int
 	// SendQueueReservedBytes is the part of SendQueueCapacityBytes that bulk
 	// messages (see MConnection.TrySendBulk) can't use. It keeps room for
-	// messages that are not sent again when the queue is full of replies.
+	// messages that are not sent again.
 	SendQueueReservedBytes int
 	RecvBufferCapacity     int
 	RecvMessageCapacity    int
@@ -946,14 +943,13 @@ func (ch *Channel) trySendBytes(bytes []byte, lazy bool) bool {
 }
 
 // trySendBulkBytes is trySendBytes for a bulk message, which can't use the
-// reserved bytes of the send queue.
+// reserved bytes.
 // Goroutine-safe
 func (ch *Channel) trySendBulkBytes(bytes []byte) bool {
 	return ch.tryQueue(bytes, false, ch.sendQueueByteLimit(true))
 }
 
-// sendQueueByteLimit returns how many bytes the send queue can hold for a
-// message. Zero means no byte limit.
+// sendQueueByteLimit returns the byte limit for a message. Zero means no limit.
 func (ch *Channel) sendQueueByteLimit(bulk bool) int64 {
 	limit := int64(ch.desc.SendQueueCapacityBytes)
 	if limit <= 0 {
@@ -971,8 +967,8 @@ func (ch *Channel) sendQueueByteLimit(bulk bool) int64 {
 }
 
 func (ch *Channel) tryQueue(bytes []byte, lazy bool, byteLimit int64) bool {
-	// A full queue is refused before any bytes are reserved, so that senders
-	// to a full queue don't contend on the byte count.
+	// Check for a full queue first, so senders to a full queue don't contend
+	// on the byte count.
 	if len(ch.sendQueue) == cap(ch.sendQueue) {
 		return false
 	}
@@ -989,10 +985,9 @@ func (ch *Channel) tryQueue(bytes []byte, lazy bool, byteLimit int64) bool {
 	}
 }
 
-// reserveSendQueueBytes counts a message of the given size towards the send
-// queue's bytes. It returns false, and counts nothing, if the message would
-// put the queue over limit. A limit of zero means no limit. A message always
-// fits in an empty queue, so a message bigger than the limit can still be sent.
+// reserveSendQueueBytes adds size to the queued bytes, or returns false if
+// that would pass limit. Zero means no limit. An empty queue takes any
+// message, so one bigger than the limit can still be sent.
 // Goroutine-safe
 func (ch *Channel) reserveSendQueueBytes(size int, limit int64) bool {
 	messageBytes := int64(size)
@@ -1005,24 +1000,21 @@ func (ch *Channel) reserveSendQueueBytes(size int, limit int64) bool {
 		if hasLimit && overLimit && !queueIsEmpty {
 			return false
 		}
-		// Another sender may have changed the count since it was loaded. Check
-		// again with the new count in that case.
+		// Try again if another sender changed the count.
 		if atomic.CompareAndSwapInt64(&ch.sendQueueBytes, queuedBytes, queuedBytes+messageBytes) {
 			return true
 		}
 	}
 }
 
-// releaseSendQueueBytes stops counting a message of the given size towards the
-// send queue's bytes.
+// releaseSendQueueBytes subtracts size from the queued bytes.
 // Goroutine-safe
 func (ch *Channel) releaseSendQueueBytes(size int) {
 	atomic.AddInt64(&ch.sendQueueBytes, -int64(size))
 }
 
-// waitForSendQueueBytes reserves room for a message of the given size. If the
-// send queue has no room, it checks again every sendQueueBytesPollInterval
-// until there is room or the timeout fires. It returns false on timeout.
+// waitForSendQueueBytes reserves room for a message, rechecking every
+// sendQueueBytesPollInterval. It returns false on timeout.
 // Goroutine-safe
 func (ch *Channel) waitForSendQueueBytes(size int, limit int64, timeout <-chan time.Time) bool {
 	if ch.reserveSendQueueBytes(size, limit) {

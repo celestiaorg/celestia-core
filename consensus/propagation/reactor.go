@@ -35,24 +35,19 @@ const (
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
 
-	// DataChannelPartsQueueBytes is how many bytes of one peer's data channel
-	// send queue the parts sent in answer to its wants can fill. A peer whose
-	// queue is this full is not sent more parts and has to request them again.
-	//
-	// It has room for two blocks of the largest size celestia-app allows
-	// (32 MiB), so raise it if that limit is raised. A peer needs half of a
-	// block's parts, about 32.2 MiB with proofs. It can want two blocks at
-	// once when a round fails and the next round proposes a different block.
+	// DataChannelPartsQueueBytes limits the parts queued for one peer in
+	// answer to its wants. Past it, parts are refused and the peer asks again.
+	// It fits two 32 MiB blocks (the celestia-app maximum, raise both
+	// together): a peer needs half of a block's parts, 32.2 MiB with proofs,
+	// and wants two blocks when a failed round is followed by a new block.
 	DataChannelPartsQueueBytes = 70 * 1024 * 1024
 
-	// DataChannelReservedQueueBytes is extra room in the data channel send
-	// queue that those parts can't use. It is kept for compact blocks, haves
-	// and pushed parts, which are not sent again if the queue refuses them.
+	// DataChannelReservedQueueBytes is kept free for compact blocks, haves and
+	// pushed parts, which are not sent again if the queue refuses them.
 	DataChannelReservedQueueBytes = 4 * 1024 * 1024
 
-	// DataChannelSendQueueBytes is how many bytes of messages can wait in one
-	// peer's data channel send queue. A peer that stops reading can pin at
-	// most this much memory.
+	// DataChannelSendQueueBytes is the most one peer's data channel send queue
+	// can hold, even if the peer stops reading.
 	DataChannelSendQueueBytes = DataChannelPartsQueueBytes + DataChannelReservedQueueBytes
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
