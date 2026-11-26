@@ -304,7 +304,11 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		// forward before recovering locally so peers don't wait on our rebuild.
 		// The proposer sends the compact block itself from ProposeBlock,
 		// followed by the parts it pushes.
-		blockProp.broadcastCompactBlock(cb, peer)
+		if !blockProp.broadcastCompactBlock(cb, peer) {
+			// a commitment replaced the entry while the proposal waited to
+			// be forwarded to consensus.
+			return
+		}
 
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
@@ -401,17 +405,29 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	}
 }
 
-// broadcastProposal gossips the provided proposal to all peers. This should
-// only be called upon receiving a proposal for the first time or after creating
-// a proposal block.
-func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) {
+// broadcastCompactBlock gossips the compact block to all peers except from,
+// and reports whether it did. This should only be called upon receiving a
+// compact block for the first time. The compact block is not gossiped when
+// the entry stored for its height and round no longer has its identity. The
+// check and the sends hold pmtx so that AddCommitment cannot replace the entry
+// in between; TrySend never blocks.
+func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) bool {
 	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message:   cb.ToProto(),
 	}
 
-	peers := blockProp.getPeers()
+	blockProp.pmtx.Lock()
+	existing := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]
+	if existing == nil || !sameProposalIdentity(existing, cb) {
+		blockProp.pmtx.Unlock()
+		return false
+	}
 
+	peers := blockProp.getPeers()
+	// sent reuses peers' backing array to keep the peers that were sent the
+	// compact block.
+	sent := peers[:0]
 	for _, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
@@ -422,9 +438,15 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue
 		}
+		sent = append(sent, peer)
+	}
+	blockProp.pmtx.Unlock()
 
+	// the tracer can block, so it is written to without pmtx.
+	for _, peer := range sent {
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
+	return true
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.
