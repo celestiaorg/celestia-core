@@ -17,6 +17,7 @@ on:
       - "Fuzz Tests"
       - "e2e-nightly"
       - "Deadlock Tests"
+      - "Formal Verification"
       - "Check for Go vulnerabilities"
     types:
       - completed
