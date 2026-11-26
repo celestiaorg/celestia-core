@@ -40,7 +40,7 @@ const (
 	// It fits two 32 MiB blocks (the celestia-app maximum, raise both
 	// together): a peer needs half of a block's parts, 32.2 MiB with proofs,
 	// and wants two blocks when a failed round is followed by a new block.
-	DataChannelPartsQueueBytes = 70 * 1024 * 1024
+	DataChannelPartsQueueBytes = 66 * 1024 * 1024
 
 	// DataChannelReservedQueueBytes is kept free for compact blocks, haves and
 	// pushed parts, which are not sent again if the queue refuses them.
