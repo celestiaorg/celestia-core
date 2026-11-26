@@ -229,7 +229,8 @@ run nightly (`.github/workflows/formal-verification-nightly.yml`).
 
 `traces/fixed_witness_*` are scenarios the random runs do not reach
 (a conflicting cached compact block, a second forward after a commitment,
-decoding by parity, a corrupt part on a stub, `X` forwarded through a stub).
+decoding by parity, a corrupt part on a stub, `X` forwarded through a stub,
+a cached compact block replaced between the pick and its apply).
 `make traces` regenerates them from fixed seeds.
 
 ## How to run

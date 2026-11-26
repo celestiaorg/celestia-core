@@ -100,7 +100,10 @@ package propagation
 // pending RECV/DELIV work that the step does not commute with (a round change
 // that makes a pending mempool recovery irrelevant, an AddCommitment that
 // replaces an entry while recovery or decoding is pending, a part for a round
-// whose mempool recovery is pending), or while Go's RECV is still busy after
+// whose mempool recovery is pending), or that leaves two producers (RECV and
+// a DELIV, or two DELIVs) with more sends pending to one channel than it can
+// hold (which of them takes the next slot is up to the Go runtime, and Go's
+// eager producer already took it), or while Go's RECV is still busy after
 // producers swapped places on a channel, the trace follows an interleaving
 // that Go's eager execution did not take. From that step on the replay only
 // checks that the reactor never hangs and never forwards a (round, identity)
@@ -339,6 +342,9 @@ type mbtDriver struct {
 	extraGoPart, extraMPart []int
 	// rounds an AddCommitment replaced: a second forward there is by design
 	replaced map[int]bool
+	// picked is the cached compact block SetConsensusState's loop picked
+	// and has not applied yet (between enterRound and consApply)
+	picked *proptypes.CompactBlock
 
 	strict bool
 	step   int
@@ -480,7 +486,7 @@ func (d *mbtDriver) replay() {
 			d.stats.envSteps++
 		}
 		if d.strict {
-			if reason := mbtInterference(pre, d.act); reason != "" {
+			if reason := mbtInterference(pre, post, d.act); reason != "" {
 				d.diverge(reason)
 			}
 		}
@@ -527,9 +533,9 @@ func (d *mbtDriver) apply(pre, post *itfState) {
 	case "part":
 		d.applyPart(pre, a)
 	case "enterRound":
-		d.applyEnterRound(a)
+		d.applyEnterRound(post, a)
 	case "consApply":
-		d.applyCached(pre, a)
+		d.applyCached(pre, post, a)
 	case "addCommitment":
 		if e := pre.Prop.Entries[a.Round]; e.Kind == "none" || e.Psh != a.Psh {
 			d.replaced[a.Round] = true
@@ -675,13 +681,14 @@ func hasPushAllowance(ps *PeerState, round int32, idx uint32) bool {
 	return st != nil && slices.Contains(st.pushAllowance, idx)
 }
 
-func (d *mbtDriver) applyEnterRound(a itfAction) {
+func (d *mbtDriver) applyEnterRound(post *itfState, a itfAction) {
 	round := int32(a.Round)
 	if a.Peer == "" || d.mode == mbtRegression {
 		d.call("SetConsensusState", func() { d.r.SetConsensusState(mbtHeight, round, d.m.fx.pub) })
 		return
 	}
-	// the first half of SetConsensusState; consApply runs the rest
+	// the first half of SetConsensusState, up to the peer pick;
+	// consApply runs the rest
 	d.call("SetConsensusState (install)", func() {
 		d.r.pmtx.Lock()
 		d.r.currentProposer = d.m.fx.pub
@@ -689,27 +696,53 @@ func (d *mbtDriver) applyEnterRound(a itfAction) {
 		d.r.pmtx.Unlock()
 		d.r.ResetRequestCounts()
 	})
+	d.pickCached(post)
 }
 
-// applyCached runs applyCachedProposalIfAvailable's loop body for the peer the
-// model picked.
-func (d *mbtDriver) applyCached(pre *itfState, a itfAction) {
+// pickCached is the start of applyCachedProposalIfAvailable's loop body for
+// the peer the model picked (post.Cons.Peer): read that peer's cached compact
+// block and validate it. The loop keeps the compact block it read, so a later
+// StoreUnverifiedProposal from RECV, before handleCachedCompactBlock runs,
+// does not change what is applied (it is the slot DeleteUnverifiedProposal
+// then clears).
+func (d *mbtDriver) pickCached(post *itfState) {
+	d.picked = nil
+	peer := post.Cons.Peer
+	cb := d.peerState(peer).GetUnverifiedProposal(mbtHeight)
+	want := itfUnverified{Has: true, Round: post.Cons.CbRound, Block: post.Cons.CbBlock}
+	if cb == nil || int(cb.Proposal.Round) != want.Round || d.m.blockName(cb.Proposal.BlockID.Hash) != want.Block {
+		if d.strict {
+			d.mismatch("cached compact block of "+peer+" at the pick", want, d.goUnverified(peer))
+		}
+		return
+	}
+	var err error
+	d.call("SetConsensusState (validate cached)", func() { err = d.r.validateCompactBlock(cb) })
+	if err != nil {
+		if d.strict {
+			d.mismatch("cached compact block of "+peer+" validates", "valid", err)
+		}
+		return
+	}
+	d.picked = cb
+}
+
+// applyCached runs the rest of applyCachedProposalIfAvailable's loop body for
+// the compact block picked from pre.Cons.Peer: handleCachedCompactBlock,
+// grantPushToCachedSenders, DeleteUnverifiedProposal. On a conflict the loop
+// moves on to the next peer, which the model does in the same step.
+func (d *mbtDriver) applyCached(pre, post *itfState, a itfAction) {
 	if d.mode == mbtRegression {
 		return // SetConsensusState already ran whole
 	}
-	ps := d.peerState(pre.Cons.Peer)
-	cb := ps.GetUnverifiedProposal(mbtHeight)
-	if cb == nil || int(cb.Proposal.Round) != pre.Cons.CbRound || d.m.blockName(cb.Proposal.BlockID.Hash) != pre.Cons.CbBlock {
-		if !d.strict {
-			return
-		}
-		d.mismatch("cached compact block of "+pre.Cons.Peer, itfUnverified{Has: true, Round: pre.Cons.CbRound, Block: pre.Cons.CbBlock}, d.goUnverified(pre.Cons.Peer))
+	cb := d.picked
+	d.picked = nil
+	if cb == nil {
+		return // only after divergence: pickCached fails otherwise
 	}
+	ps := d.peerState(pre.Cons.Peer)
 	var applied bool
 	d.call("SetConsensusState (apply cached)", func() {
-		if err := d.r.validateCompactBlock(cb); err != nil {
-			return
-		}
 		if d.r.handleCachedCompactBlock(cb) {
 			d.r.grantPushToCachedSenders(d.r.getPeers(), cb)
 			ps.DeleteUnverifiedProposal(mbtHeight)
@@ -718,6 +751,9 @@ func (d *mbtDriver) applyCached(pre *itfState, a itfAction) {
 	})
 	if d.strict && applied != a.Accepted {
 		d.mismatch("cached compact block applied", a.Accepted, applied)
+	}
+	if !applied && post.Cons.PC == "apply" {
+		d.pickCached(post) // the loop's next peer
 	}
 }
 
@@ -910,7 +946,10 @@ func mbtPendingPartWork(s *itfState) map[int]bool {
 // mbtInterference reports why environment step a, taken in s, does not
 // commute with the RECV/DELIV work pending in s (Go ran that work before a),
 // or "" if it commutes.
-func mbtInterference(s *itfState, a itfAction) string {
+func mbtInterference(s, post *itfState, a itfAction) string {
+	if reason := mbtProducerRace(s, post, a); reason != "" {
+		return reason
+	}
 	if !a.Env {
 		return ""
 	}
@@ -946,6 +985,93 @@ func mbtInterference(s *itfState, a itfAction) string {
 		}
 	}
 	return ""
+}
+
+// mbtProducerRace reports a step after which two goroutines (RECV and a
+// DELIV, or two DELIVs) have sends to the same channel pending while that
+// channel cannot take them all (capacity 1). Go ran the older producer
+// eagerly, so it took the free slot first; the trace may give it to the
+// newer one, and with both waiting the Go runtime picks either. Which
+// producer stays blocked is then no longer determined by the trace.
+func mbtProducerRace(s, post *itfState, a itfAction) string {
+	newProducer := false
+	switch a.Kind {
+	case "compactBlock", "part":
+		newProducer = post.Recv.PC != "idle"
+	case "consApply":
+		newProducer = s.Deliv[a.Round].PC == "none" && post.Deliv[a.Round].PC != "none"
+	}
+	if !newProducer {
+		return ""
+	}
+	props, parts := mbtPendingSends(post)
+	for name, ch := range map[string]struct {
+		producers, items int
+	}{"proposalChan": {len(props), len(post.PropChan)}, "partChan": {len(parts), len(post.PartChan)}} {
+		total := ch.items
+		for _, n := range props {
+			if name == "proposalChan" {
+				total += n
+			}
+		}
+		for _, n := range parts {
+			if name == "partChan" {
+				total += n
+			}
+		}
+		if ch.producers > 1 && total > 1 {
+			return fmt.Sprintf("%s leaves two producers with sends to %s pending", a.Kind, name)
+		}
+	}
+	return ""
+}
+
+// mbtPendingSends returns, per producer ("recv", "deliv0", "deliv1"), how many
+// proposals and how many parts it may still send in s. A pending mempool
+// recovery counts one part for the first producer per round only, since the
+// one that runs first rebuilds the part; a pending decode counts two.
+func mbtPendingSends(s *itfState) (props, parts map[string]int) {
+	props, parts = map[string]int{}, map[string]int{}
+	recovering := map[int]bool{}
+	lacks := func(r int) bool { return !slices.Contains(s.Prop.Entries[r].Orig, 0) }
+	recoverPart := func(who string, r int) {
+		if lacks(r) && !recovering[r] {
+			recovering[r] = true
+			parts[who]++
+		}
+	}
+	switch rv := s.Recv; rv.PC {
+	case "sendProp":
+		props["recv"]++
+		if rv.Added {
+			recoverPart("recv", rv.Round)
+		}
+	case "gossip":
+		recoverPart("recv", rv.Round)
+	case "sendParts":
+		parts["recv"] += rv.N
+		if rv.DecodeAfter {
+			parts["recv"] += 2
+		}
+	}
+	for r := 0; r < len(s.Deliv); r++ {
+		dl, who := s.Deliv[r], "deliv"+strconv.Itoa(r)
+		switch dl.PC {
+		case "sendProp":
+			props[who]++
+			recoverPart(who, r)
+		case "recover":
+			recoverPart(who, r)
+		case "sendParts":
+			parts[who] += dl.N
+		}
+	}
+	for k, n := range parts {
+		if n == 0 {
+			delete(parts, k)
+		}
+	}
+	return props, parts
 }
 
 // ------------------------------------------------------------ go views
@@ -1385,8 +1511,14 @@ func globTraces(t *testing.T, dir string, patterns ...string) []string {
 // 'not(lastAction.kind == "part" and lastAction.corrupt and lastAction.proof
 // and prop.entries.get(lastAction.round).kind == "stub")', all with seed 0x7;
 // xViaStub 'not(lastAction.kind == "recvSendProp" and lastAction.block ==
-// "X")' with seed 0x3. `make traces` deletes the directory first, so rerun
-// these after it.
+// "X")' with seed 0x3. cachedReplaced (the picked peer replaces its cached
+// compact block before consApply) is trace 742 of an unguided run:
+//
+//	quint run instances.qnt --main fixedTraced --seed 0x31 --max-samples 1000 \
+//	  --n-traces 1000 --max-steps 50 --out-itf "$TMP/t_{seq}.itf.json" &&
+//	  cp "$TMP/t_742.itf.json" traces/fixed_witness_cachedReplaced.itf.json
+//
+// `make traces` deletes the directory first, so rerun these after it.
 func TestMBTReplayFixedTraces(t *testing.T) {
 	m := loadMBTFixtures(t)
 	files := globTraces(t, mbtTraceDir, "fixed_*.itf.json")

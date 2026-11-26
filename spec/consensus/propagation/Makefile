@@ -118,6 +118,13 @@ traces: deps
 	  --out-itf '$(TRACES)/fixed_witness_corruptOnStub.itf.json'
 	$(WITNESS) --seed 0x3 --invariant 'not(lastAction.kind == "recvSendProp" and lastAction.block == "X")' \
 	  --out-itf '$(TRACES)/fixed_witness_xViaStub.itf.json'
+	@# a peer's cached compact block replaced between the pick and consApply;
+	@# no invariant can target it, so take a known run of a fixed seed.
+	rm -rf _witness && mkdir -p _witness
+	$(QUINT) run $(INST) --main fixedTraced --seed 0x31 --max-samples 1000 --n-traces 1000 --max-steps 50 \
+	  --out-itf '_witness/t_{seq}.itf.json'
+	cp _witness/t_742.itf.json $(TRACES)/fixed_witness_cachedReplaced.itf.json
+	rm -rf _witness
 
 # Conformance: replay fresh random traces of the fixed model, and the
 # committed traces, against the real reactor (consensus/propagation,
