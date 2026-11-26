@@ -423,13 +423,13 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 	return c.tryQueueSend(chID, msgBytes, false)
 }
 
-// TrySendBulk is TrySend for a message the peer can ask for again. It can't
-// use the channel's SendQueueReservedBytes.
-func (c *MConnection) TrySendBulk(chID byte, msgBytes []byte) bool {
+// TrySendDroppable is TrySend for a message that can be dropped, because the
+// peer asks for it again. It can't use the channel's SendQueueReservedBytes.
+func (c *MConnection) TrySendDroppable(chID byte, msgBytes []byte) bool {
 	return c.tryQueueSend(chID, msgBytes, true)
 }
 
-func (c *MConnection) tryQueueSend(chID byte, msgBytes []byte, bulk bool) bool {
+func (c *MConnection) tryQueueSend(chID byte, msgBytes []byte, canBeDropped bool) bool {
 	if !c.IsRunning() {
 		return false
 	}
@@ -443,8 +443,8 @@ func (c *MConnection) tryQueueSend(chID byte, msgBytes []byte, bulk bool) bool {
 		return false
 	}
 
-	if bulk {
-		ok = channel.trySendBulkBytes(msgBytes)
+	if canBeDropped {
+		ok = channel.trySendDroppableBytes(msgBytes)
 	} else {
 		ok = channel.trySendBytes(msgBytes, false)
 	}
@@ -839,9 +839,9 @@ type ChannelDescriptor struct {
 	// a peer that stops reading can't pin more than this. Zero means no byte
 	// limit.
 	SendQueueCapacityBytes int
-	// SendQueueReservedBytes is the part of SendQueueCapacityBytes that bulk
-	// messages (see MConnection.TrySendBulk) can't use. It keeps room for
-	// messages that are not sent again.
+	// SendQueueReservedBytes is the part of SendQueueCapacityBytes kept for
+	// messages that are not sent again. Messages that can be dropped (see
+	// MConnection.TrySendDroppable) can't use it.
 	SendQueueReservedBytes int
 	RecvBufferCapacity     int
 	RecvMessageCapacity    int
@@ -942,28 +942,28 @@ func (ch *Channel) trySendBytes(bytes []byte, lazy bool) bool {
 	return ch.tryQueue(bytes, lazy, ch.sendQueueByteLimit(false))
 }
 
-// trySendBulkBytes is trySendBytes for a bulk message, which can't use the
-// reserved bytes.
+// trySendDroppableBytes is trySendBytes for a message that can be dropped. It
+// can't use the reserved bytes.
 // Goroutine-safe
-func (ch *Channel) trySendBulkBytes(bytes []byte) bool {
+func (ch *Channel) trySendDroppableBytes(bytes []byte) bool {
 	return ch.tryQueue(bytes, false, ch.sendQueueByteLimit(true))
 }
 
 // sendQueueByteLimit returns the byte limit for a message. Zero means no limit.
-func (ch *Channel) sendQueueByteLimit(bulk bool) int64 {
+func (ch *Channel) sendQueueByteLimit(canBeDropped bool) int64 {
 	limit := int64(ch.desc.SendQueueCapacityBytes)
 	if limit <= 0 {
 		return 0
 	}
-	if !bulk {
+	if !canBeDropped {
 		return limit
 	}
-	bulkLimit := limit - int64(ch.desc.SendQueueReservedBytes)
-	if bulkLimit < 1 {
+	droppableLimit := limit - int64(ch.desc.SendQueueReservedBytes)
+	if droppableLimit < 1 {
 		// zero would mean no limit
 		return 1
 	}
-	return bulkLimit
+	return droppableLimit
 }
 
 func (ch *Channel) tryQueue(bytes []byte, lazy bool, byteLimit int64) bool {

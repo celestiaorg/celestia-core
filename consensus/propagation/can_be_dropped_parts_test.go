@@ -41,43 +41,43 @@ func addEnvelopeRecordingPeer(r *Reactor) *envelopeRecordingPeer {
 	return peer
 }
 
-// requireOnlyBulkParts checks that the peer was sent at least one message and
-// that all of them are block parts marked as bulk.
-func requireOnlyBulkParts(t *testing.T, peer *envelopeRecordingPeer) {
+// requireOnlyDroppableParts checks that the peer was sent at least one message
+// and that all of them are block parts marked CanBeDropped.
+func requireOnlyDroppableParts(t *testing.T, peer *envelopeRecordingPeer) {
 	t.Helper()
 	envelopes := peer.sentEnvelopes()
 	require.NotEmpty(t, envelopes)
 	for _, envelope := range envelopes {
 		require.IsType(t, &propproto.RecoveryPart{}, envelope.Message)
 		require.Equal(t, DataChannel, envelope.ChannelID)
-		require.True(t, envelope.Bulk, "a part sent in answer to a want must be bulk")
+		require.True(t, envelope.CanBeDropped, "a part sent in answer to a want must be marked CanBeDropped")
 	}
 }
 
-// Parts sent in answer to a want are bulk, so they can't use the room that the
-// data channel send queue reserves for compact blocks and haves.
-func TestPartsServedFromCacheAreBulk(t *testing.T) {
+// Parts sent in answer to a want can be dropped, so they can't use the room
+// that the data channel send queue reserves for compact blocks and haves.
+func TestPartsServedFromCacheCanBeDropped(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	peer := addEnvelopeRecordingPeer(r)
 	height := cacheTestProposal(t, r, 0, ps)
 
 	r.handleWants(peer.ID(), wantAllParts(height, 0, ps.Total(), false))
 
-	requireOnlyBulkParts(t, peer)
+	requireOnlyDroppableParts(t, peer)
 }
 
-func TestPartsServedFromStoreAreBulk(t *testing.T) {
+func TestPartsServedFromStoreCanBeDropped(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	peer := addEnvelopeRecordingPeer(r)
 
 	r.handleWants(peer.ID(), storedWant(ps.Total(), 2, 0, 1))
 
-	requireOnlyBulkParts(t, peer)
+	requireOnlyDroppableParts(t, peer)
 }
 
 // A compact block is not sent again if the send queue refuses it, so it must
 // be able to use the reserved room.
-func TestCompactBlockIsNotBulk(t *testing.T) {
+func TestCompactBlockCannotBeDropped(t *testing.T) {
 	r, _ := newStoredBlockReactor(t)
 	peer := addEnvelopeRecordingPeer(r)
 
@@ -85,5 +85,5 @@ func TestCompactBlockIsNotBulk(t *testing.T) {
 
 	envelopes := peer.sentEnvelopes()
 	require.Len(t, envelopes, 1)
-	require.False(t, envelopes[0].Bulk)
+	require.False(t, envelopes[0].CanBeDropped)
 }

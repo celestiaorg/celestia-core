@@ -124,14 +124,14 @@ func TestSendQueueBytesAcceptsOversizedMessageInEmptyQueue(t *testing.T) {
 	require.True(t, channel.trySendBytes(smallMessage, false))
 }
 
-func TestSendQueueBytesBulkMessagesCannotUseReservedBytes(t *testing.T) {
+func TestSendQueueBytesDroppableMessagesCannotUseReservedBytes(t *testing.T) {
 	channel := newByteLimitedChannel(t, 100, 1000)
 	channel.desc.SendQueueReservedBytes = 300
 	message := make([]byte, 350)
 
-	require.True(t, channel.trySendBulkBytes(message))
-	require.True(t, channel.trySendBulkBytes(message))
-	require.False(t, channel.trySendBulkBytes(message), "bulk messages can fill 700 of the 1000 bytes")
+	require.True(t, channel.trySendDroppableBytes(message))
+	require.True(t, channel.trySendDroppableBytes(message))
+	require.False(t, channel.trySendDroppableBytes(message), "droppable messages can fill 700 of the 1000 bytes")
 	require.Equal(t, int64(700), queuedBytes(channel))
 
 	smallMessage := make([]byte, 300)
@@ -140,17 +140,17 @@ func TestSendQueueBytesBulkMessagesCannotUseReservedBytes(t *testing.T) {
 	require.Equal(t, int64(1000), queuedBytes(channel))
 }
 
-func TestSendQueueBytesBulkLimitIgnoredWithoutByteLimit(t *testing.T) {
+func TestSendQueueBytesDroppableLimitIgnoredWithoutByteLimit(t *testing.T) {
 	channel := newByteLimitedChannel(t, 100, 0)
 	channel.desc.SendQueueReservedBytes = 300
 	message := make([]byte, 1<<20)
 
-	require.True(t, channel.trySendBulkBytes(message))
-	require.True(t, channel.trySendBulkBytes(message), "a channel without a byte limit has no bulk limit either")
+	require.True(t, channel.trySendDroppableBytes(message))
+	require.True(t, channel.trySendDroppableBytes(message), "a channel without a byte limit has no droppable limit either")
 }
 
 // The peer never reads, so the queue only fills up.
-func TestMConnectionTrySendBulk(t *testing.T) {
+func TestMConnectionTrySendDroppable(t *testing.T) {
 	server, client := NetPipe()
 	t.Cleanup(func() {
 		_ = server.Close()
@@ -173,15 +173,15 @@ func TestMConnectionTrySendBulk(t *testing.T) {
 	t.Cleanup(func() { _ = connection.Stop() })
 
 	message := make([]byte, mebibyte)
-	bulkAccepted := 0
-	for connection.TrySendBulk(testByteLimitChannelID, message) {
-		bulkAccepted++
-		require.Less(t, bulkAccepted, 100, "bulk messages must be refused at some point")
+	droppableAccepted := 0
+	for connection.TrySendDroppable(testByteLimitChannelID, message) {
+		droppableAccepted++
+		require.Less(t, droppableAccepted, 100, "droppable messages must be refused at some point")
 	}
-	require.GreaterOrEqual(t, bulkAccepted, 6, "bulk messages can fill the queue up to the reserved bytes")
+	require.GreaterOrEqual(t, droppableAccepted, 6, "droppable messages can fill the queue up to the reserved bytes")
 
 	require.True(t, connection.TrySend(testByteLimitChannelID, message), "other messages can use the reserved bytes")
-	require.False(t, connection.TrySendBulk(testByteLimitChannelID, message))
+	require.False(t, connection.TrySendDroppable(testByteLimitChannelID, message))
 
 	status := connection.Status().Channels[0]
 	require.LessOrEqual(t, status.SendQueueBytes, int64(10*mebibyte))
