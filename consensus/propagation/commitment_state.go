@@ -243,8 +243,8 @@ func (p *ProposalCache) getCachedStateAndRound(height int64, round int32, catchu
 	return cachedProp.compactBlock, cachedProp.block, cachedRound, true, committed
 }
 
-// cachedLocked returns the cached proposal for a height and round and the
-// round it is cached at, or nil. A round below -1 selects the latest cached
+// cachedLocked returns the cached proposal for a height the round it
+// is cached at, or nil. A round below -1 selects the latest cached
 // round. The caller must hold pmtx.
 func (p *ProposalCache) cachedLocked(height int64, round int32) (*proposalData, int32) {
 	cachedProps := p.proposals[height]

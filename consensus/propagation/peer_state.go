@@ -608,11 +608,13 @@ func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
 	return partState.everRequested.GetIndex(int(index))
 }
 
-// servedParts counts how many times each part of one block was sent to a peer.
+// servedParts counts how many times each part of one block was sent to one
+// peer. Each PeerState has its own, so the counts are never shared by peers.
 type servedParts struct {
 	// blockHash is the part set hash of the block the counts belong to.
 	blockHash []byte
-	// counts is the number of sends per part index.
+	// counts has one counter per part: counts[i] is how many times part i was
+	// sent to the peer.
 	counts []uint8
 }
 
@@ -623,28 +625,49 @@ func (d *PeerState) UnservedParts(height int64, round int32, blockHash []byte, w
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	rounds := d.servedParts[height]
-	if rounds == nil {
-		rounds = make(map[int32]*servedParts)
-		d.servedParts[height] = rounds
-	}
-	served := rounds[round]
-	sameBlock := served != nil && bytes.Equal(served.blockHash, blockHash) && len(served.counts) == wanted.Size()
-	if !sameBlock {
-		served = &servedParts{
-			blockHash: blockHash,
-			counts:    make([]uint8, wanted.Size()),
-		}
-		rounds[round] = served
-	}
+	served := d.servedPartsForBlock(height, round, blockHash, wanted.Size())
 
+	// Start from everything the peer wants and drop the parts it was already
+	// sent MaxServesPerPart times.
 	unserved := wanted.Copy()
 	for _, partIndex := range wanted.GetTrueIndices() {
-		if served.counts[partIndex] >= MaxServesPerPart {
+		reachedLimit := served.counts[partIndex] >= MaxServesPerPart
+		if reachedLimit {
 			unserved.SetIndex(partIndex, false)
 		}
 	}
 	return unserved
+}
+
+// servedPartsForBlock returns this peer's counts for the block at this height
+// and round. It starts new counts, all zero, if there are none yet or if the
+// existing ones are for another block. The caller must hold mtx.
+func (d *PeerState) servedPartsForBlock(height int64, round int32, blockHash []byte, partCount int) *servedParts {
+	if d.servedParts[height] == nil {
+		d.servedParts[height] = make(map[int32]*servedParts)
+	}
+
+	existing := d.servedParts[height][round]
+	if existing != nil && existing.isForBlock(blockHash, partCount) {
+		return existing
+	}
+
+	// First want for this block, or the block at this round was replaced:
+	// nothing has been sent yet, so every counter starts at zero.
+	fresh := &servedParts{
+		blockHash: blockHash,
+		counts:    make([]uint8, partCount),
+	}
+	d.servedParts[height][round] = fresh
+	return fresh
+}
+
+// isForBlock reports whether the counts belong to the block with this part set
+// hash and number of parts.
+func (s *servedParts) isForBlock(blockHash []byte, partCount int) bool {
+	sameHash := bytes.Equal(s.blockHash, blockHash)
+	sameSize := len(s.counts) == partCount
+	return sameHash && sameSize
 }
 
 // RecordServedParts counts one send of each given part to the peer. It does
@@ -661,6 +684,7 @@ func (d *PeerState) RecordServedParts(height int64, round int32, blockHash []byt
 		if partIndex < 0 || partIndex >= len(served.counts) {
 			continue
 		}
+		// Stop counting at the limit so the counter can't overflow.
 		if served.counts[partIndex] < MaxServesPerPart {
 			served.counts[partIndex]++
 		}
