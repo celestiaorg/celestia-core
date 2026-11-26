@@ -428,21 +428,25 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 	// sent reuses peers' backing array to keep the peers that were sent the
 	// compact block.
 	sent := peers[:0]
+	var failed []p2p.ID
 	for _, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
 		}
 
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
+			failed = append(failed, peer.peer.ID())
 			continue
 		}
 		sent = append(sent, peer)
 	}
 	blockProp.pmtx.Unlock()
 
-	// the tracer can block, so it is written to without pmtx.
+	// the logger and the tracer can block, so they are written to without pmtx.
+	for _, id := range failed {
+		blockProp.Logger.Debug("failed to send proposal to peer", "peer", id)
+	}
 	for _, peer := range sent {
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
