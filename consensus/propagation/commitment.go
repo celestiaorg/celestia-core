@@ -408,46 +408,36 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 // broadcastCompactBlock gossips the compact block to all peers except from,
 // and reports whether it did. This should only be called upon receiving a
 // compact block for the first time. The compact block is not gossiped when
-// the entry stored for its height and round no longer has its identity. The
-// check and the sends hold pmtx so that AddCommitment cannot replace the entry
-// in between; TrySend never blocks.
+// the entry stored for its height and round no longer has its identity. pmtx
+// is released before the sends: TrySend only queues the message, so holding
+// it across them would make other users of pmtx wait and gain nothing.
 func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) bool {
+	blockProp.pmtx.Lock()
+	existing := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]
+	same := existing != nil && sameProposalIdentity(existing, cb)
+	blockProp.pmtx.Unlock()
+	if !same {
+		return false
+	}
+
 	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message:   cb.ToProto(),
 	}
 
-	blockProp.pmtx.Lock()
-	existing := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]
-	if existing == nil || !sameProposalIdentity(existing, cb) {
-		blockProp.pmtx.Unlock()
-		return false
-	}
-
 	peers := blockProp.getPeers()
-	// sent reuses peers' backing array to keep the peers that were sent the
-	// compact block.
-	sent := peers[:0]
-	var failed []p2p.ID
+
 	for _, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
 		}
 
 		if !peer.peer.TrySend(e) {
+			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
-			failed = append(failed, peer.peer.ID())
 			continue
 		}
-		sent = append(sent, peer)
-	}
-	blockProp.pmtx.Unlock()
 
-	// the logger and the tracer can block, so they are written to without pmtx.
-	for _, id := range failed {
-		blockProp.Logger.Debug("failed to send proposal to peer", "peer", id)
-	}
-	for _, peer := range sent {
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
 	return true
