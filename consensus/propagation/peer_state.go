@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -468,13 +469,53 @@ func (d *PeerState) RequestsReady() {
 
 // requeueHaves puts haves back in the queue, so the parts can be requested
 // from this peer later.
+//
+// The whole queue is put back in part order. Otherwise these haves would go
+// behind the parity parts, and we'd ask for parity before the original parts
+// we still need. Then the node has to rebuild the originals, which is slow
+// for big blocks.
+//
+// Only the peer's request routine may call this, since it is the only reader
+// of the queue.
 func (d *PeerState) requeueHaves(height int64, round int32, partIndexes []int) {
+	if len(partIndexes) == 0 {
+		return
+	}
+
+	haves := make([]request, 0, len(partIndexes)+len(d.receivedHaves))
 	for _, partIndex := range partIndexes {
-		have := request{height: height, round: round, index: uint32(partIndex)}
+		haves = append(haves, request{height: height, round: round, index: uint32(partIndex)})
+	}
+	haves = append(haves, d.drainReceivedHaves()...)
+
+	sort.SliceStable(haves, func(i, j int) bool {
+		if haves[i].height != haves[j].height {
+			return haves[i].height < haves[j].height
+		}
+		if haves[i].round != haves[j].round {
+			return haves[i].round < haves[j].round
+		}
+		return haves[i].index < haves[j].index
+	})
+
+	for _, have := range haves {
 		select {
 		case d.receivedHaves <- have:
 		default:
 			// the queue is full. The retry will ask for this part.
+		}
+	}
+}
+
+// drainReceivedHaves takes every have that is waiting in the queue.
+func (d *PeerState) drainReceivedHaves() []request {
+	waiting := make([]request, 0, len(d.receivedHaves))
+	for {
+		select {
+		case have := <-d.receivedHaves:
+			waiting = append(waiting, have)
+		default:
+			return waiting
 		}
 	}
 }

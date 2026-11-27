@@ -301,6 +301,33 @@ func TestHonestPeerServesTheRestAfterSilentPeers(t *testing.T) {
 	require.True(t, parts.IsComplete())
 }
 
+// TestRequeueHavesKeepsPartOrder checks that haves we put back go in front of
+// the higher parts that are already waiting, so original parts are asked for
+// before parity parts.
+func TestRequeueHavesKeepsPartOrder(t *testing.T) {
+	const (
+		height = int64(10)
+		round  = int32(0)
+	)
+	receiver, _, _ := receiverWithCompactBlock(t, 2, height, round)
+	peer := receiver.getPeers()[0]
+
+	// two parity parts are already waiting in the queue.
+	waitingParts := []uint32{40, 41}
+	for _, index := range waitingParts {
+		peer.receivedHaves <- request{height: height, round: round, index: index}
+	}
+
+	peer.requeueHaves(height, round, []int{5, 6})
+
+	queued := peer.drainReceivedHaves()
+	queuedParts := make([]uint32, 0, len(queued))
+	for _, have := range queued {
+		queuedParts = append(queuedParts, have.index)
+	}
+	require.Equal(t, []uint32{5, 6, 40, 41}, queuedParts)
+}
+
 // receiverWithCompactBlock starts nodeCount connected nodes and gives the
 // first one a compact block, without any of its parts.
 func receiverWithCompactBlock(t *testing.T, nodeCount int, height int64, round int32) (*Reactor, *proptypes.CombinedPartSet, *types.PartSet) {
