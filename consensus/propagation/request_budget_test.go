@@ -309,8 +309,8 @@ func TestRequeueHavesKeepsPartOrder(t *testing.T) {
 		height = int64(10)
 		round  = int32(0)
 	)
-	receiver, _, _ := receiverWithCompactBlock(t, 2, height, round)
-	peer := receiver.getPeers()[0]
+	// a peer of its own, so nothing else reads from the queue.
+	peer := &PeerState{receivedHaves: make(chan request, 10)}
 
 	// two parity parts are already waiting in the queue.
 	waitingParts := []uint32{40, 41}
