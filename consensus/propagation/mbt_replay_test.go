@@ -971,7 +971,12 @@ func mbtInterference(s, post *itfState, a itfAction) string {
 		// the replaced entry's pending recovery or decoding goes to the stub
 		// in the model and went to the old part set in Go; the round reset
 		// to 0 makes an irrelevant pending recovery relevant again
-		if recover[a.Round] || (decode && s.Recv.Round == a.Round) {
+		// RECV parked on the full proposalChan has not reached the gossip in
+		// Go either; after the replacement both skip the gossip and the
+		// mempool recovery (broadcastCompactBlock's identity check).
+		recvParked := s.Recv.PC == "sendProp" && s.Recv.Added && s.Recv.Round == a.Round && len(s.PropChan) >= 1
+		delivRecover := a.Round < len(s.Deliv) && (s.Deliv[a.Round].PC == "sendProp" || s.Deliv[a.Round].PC == "recover")
+		if (recover[a.Round] && (!recvParked || delivRecover)) || (decode && s.Recv.Round == a.Round) {
 			return fmt.Sprintf("addCommitment(%d, %s) replaces an entry with recovery or decoding pending", a.Round, a.Psh)
 		}
 		for r := range recover {

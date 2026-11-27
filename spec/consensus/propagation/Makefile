@@ -52,6 +52,8 @@ test: deps
 	$(QUINT) test --main prefixTest $(TESTS)
 	$(QUINT) test --main forwardOnceOnlyTest $(TESTS)
 	$(QUINT) test --main asyncOnlyTest $(TESTS)
+	$(QUINT) test --main gossipUncheckedTest $(TESTS)
+	$(QUINT) test --main gossipCheckedTest $(TESTS)
 	$(QUINT) test --main fixedTest $(TESTS)
 
 # random simulation of the fixed model (Rust evaluator); bounded, not a proof.
@@ -59,9 +61,9 @@ simulate: deps
 	$(QUINT) run $(INST) --main fixedTraced --max-samples $(SAMPLES) --max-steps $(STEPS) \
 	  --invariants $(SAFETY)
 
-SAFETY := S1_noWaitCycle S1_noQueueCycle S2_forwardOnce S3_decision sanity
+SAFETY := S1_noWaitCycle S1_noQueueCycle S2_forwardOnce S3_decision S3_gossip sanity
 
-# S1, S2, S3 (forward decision) on the fixed model, exhaustive (TLC), on the
+# S1, S2, S3 (forward decision and gossip) on the fixed model, exhaustive (TLC), on the
 # two configurations the check is split into (README, "Reductions").
 verify: deps
 	$(TLC) --main fixedIdentity --invariants $(SAFETY)
@@ -72,14 +74,17 @@ verify-cap2: deps
 	$(TLC) --main fixedIdentityCap2 --invariants $(SAFETY)
 	$(TLC) --main fixedPartsCap2 --invariants $(SAFETY)
 
-# The pilot's gate: with ab6a3df reverted, TLC must find the wait-for cycle
-# (S1) and a duplicate forward (S2). Fails if either property holds.
+# The gate: with ab6a3df reverted, TLC must find the wait-for cycle (S1) and
+# a duplicate forward (S2); with 1011fdec8 reverted, a gossip of a compact
+# block that conflicts with the stored entry (S3_gossip). Fails if any of
+# these properties holds.
 gate: deps
 	@./expect_violation.sh S1_noWaitCycle $(TLC) --main prefix --invariants S1_noWaitCycle
 	@./expect_violation.sh S1_noQueueCycle $(TLC) --main prefix --invariants S1_noQueueCycle
 	@./expect_violation.sh S2_forwardOnce $(TLC) --main prefix --invariants S2_forwardOnce
 	@./expect_violation.sh S1_noWaitCycle $(TLC) --main forwardOnceOnly --invariants S1_noWaitCycle
 	@./expect_violation.sh S2_forwardOnce $(TLC) --main asyncOnly --invariants S2_forwardOnce
+	@./expect_violation.sh S3_gossip $(TLC) --main gossipUnchecked --invariants S3_gossip
 
 # L1 under the fairness assumptions in propagation.qnt (TLC, exhaustive), on
 # one round; plus the vacuity check (without fairness L1 must fail).
@@ -105,6 +110,8 @@ traces: deps
 	$(QUINT) test --main prefixTest $(TESTS) --out-itf '$(TRACES)/prefix_{test}.itf.json'
 	$(QUINT) test --main forwardOnceOnlyTest $(TESTS) --out-itf '$(TRACES)/forwardOnceOnly_{test}.itf.json'
 	$(QUINT) test --main asyncOnlyTest $(TESTS) --out-itf '$(TRACES)/asyncOnly_{test}.itf.json'
+	$(QUINT) test --main gossipUncheckedTest $(TESTS) --out-itf '$(TRACES)/gossipUnchecked_{test}.itf.json'
+	$(QUINT) test --main gossipCheckedTest $(TESTS) --out-itf '$(TRACES)/gossipChecked_{test}.itf.json'
 	$(QUINT) test --main fixedTest $(TESTS) --out-itf '$(TRACES)/fixed_{test}.itf.json'
 	$(QUINT) run $(INST) --main fixedTraced --seed 0x1 --max-samples 3 --max-steps 40 --n-traces 3 \
 	  --invariants $(SAFETY) --out-itf '$(TRACES)/fixed_random_{seq}.itf.json'
@@ -128,7 +135,7 @@ traces: deps
 
 # Conformance: replay fresh random traces of the fixed model, and the
 # committed traces, against the real reactor (consensus/propagation,
-# TestMBT*). quint prints the seed it used.
+# TestMBT*).
 replay: deps
 	rm -rf _replay && mkdir -p _replay
 	$(QUINT) run $(INST) --main fixedTraced --max-samples $(REPLAY_TRACES) --n-traces $(REPLAY_TRACES) \

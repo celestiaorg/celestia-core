@@ -4,16 +4,18 @@ A Quint model of the hand-off between the compact-block propagation reactor
 (`consensus/propagation`) and the consensus state machine
 (`consensus/state.go`), with the properties it is checked against. It was
 written to reproduce PROTOCO-3430 (fixed in `ab6a3df`, "forward each compact
-block to consensus once") and to check the fixed code. The readers and
+block to consensus once") and to check the fixed code. It also covers
+`1011fdec8` (#3840), which makes `broadcastCompactBlock` check the stored
+identity before it gossips a compact block. The readers and
 maintainers are agents: this file is a reference, not a tutorial.
 
 | File | Content |
 |---|---|
 | `propagation.qnt` | the parametric model (module `propagation`) |
-| `instances.qnt` | configurations: `fixed`, `fixedCap2`, `prefix`, `forwardOnceOnly`, `asyncOnly`, `live`, and `*Traced` twins |
-| `propagation_test.qnt` | scenario `run` tests, including both counterexamples |
-| `Makefile`, `expect_violation.sh`, `tlc.json` | CI entry points |
-| `traces/` | ITF traces (`make traces`): one per scenario test (`prefix_waitCycleTest` = PROTOCO-3430 cycle, `prefix_duplicateForwardTest` = duplicate forward, `forwardOnceOnly_rsMtxCycleTest` = cycle through `cs.rsMtx` with only half (a) applied, `fixed_*` = the same inputs and other scenarios with the fix), plus three random runs of `fixedTraced` |
+| `instances.qnt` | configurations: `fixedIdentity`, `fixedParts`, their `Cap2` variants, `fixed`, `prefix`, `forwardOnceOnly`, `asyncOnly`, `gossipUnchecked`, `live`, `liveOneRound`, and `*Traced` twins |
+| `propagation_test.qnt` | scenario `run` tests, including the counterexamples for S1, S2 and S3_gossip and their fixed twins |
+| `Makefile`, `expect_violation.sh`, `expect_witness.sh`, `tlc.json` | CI entry points |
+| `traces/` | ITF traces (`make traces`): one per scenario test (`prefix_waitCycleTest` = PROTOCO-3430 cycle, `prefix_duplicateForwardTest` = duplicate forward, `forwardOnceOnly_rsMtxCycleTest` = cycle through `cs.rsMtx` with only half (a) applied, `gossipUnchecked_gossipAfterReplaceTest` = gossip after a commitment replaced the entry, with `1011fdec8` reverted, `gossipChecked_gossipSkippedAfterReplaceTest` = its fixed twin, `fixed_*` = the same inputs and other scenarios with the fix), plus three random runs of `fixedTraced` |
 
 ## Scope
 
@@ -36,7 +38,10 @@ parity), `MEMPOOL` (originals `0..MEMPOOL-1` rebuildable from the mempool),
 `CAP_PROP`, `CAP_PART`, `CAP_PMQ` (capacities of `proposalChan`, `partChan`,
 `peerMsgQueue`; 1 or 2), `VOTES` (the consensus reactor may queue messages
 in `peerMsgQueue`), `FORWARD_ONCE` and `ASYNC_DELIVERY` (the two halves of
-`ab6a3df`), `TRACE`, `LOG_CAP`.
+`ab6a3df`), `GOSSIP_CHECK` (`1011fdec8`: gossip only while the stored entry
+has the compact block's identity), `TRACE`, `TRACK_REQUESTS`, `PARTS`,
+`LOG_CAP`. Each of `FORWARD_ONCE`, `ASYNC_DELIVERY` and `GOSSIP_CHECK` is
+`true` for the code on `main`; `false` reverts that change.
 
 ## Processes
 
@@ -111,6 +116,7 @@ indexes, `par` = number of held parity parts.
 | 16 | Go map iteration order (peers in `applyCachedProposalIfAvailable`) is a free choice | none |
 | 17 | The reactor is started (`started = true`, as the fuzz harness sets it); before `StartProcessing` haves, wants and parts are dropped | behaviour during block sync |
 | 18 | `TRACE = false` keeps `lastAction`, `obs`, `gossiped` and the contents of `proposalChan`/`peerMsgQueue` constant (only their length matters). No guard reads them, so the other variables' behaviours are unchanged; this is what makes the exhaustive runs fit | none |
+| 19 | With `GOSSIP_CHECK`, `recvGossip` checks that the entry at (H, round) still has the compact block's identity and, if it does, gossips (and then recovers mempool parts) in the same atomic step; on a mismatch it sends nothing and skips the mempool recovery. In Go, `broadcastCompactBlock` takes `pmtx` for the check, releases it, and then calls `TrySend` for each peer (by design, reviewed in #3840: `TrySend` only queues bytes, so holding `pmtx` across the sends would not stop a send that is already queued) | an `AddCommitment` for another header that runs between the check and the first `TrySend` (a few instructions): the compact block is then still gossiped and its mempool parts recovered. The model's `S3_gossip` holds because the check and the sends are atomic here |
 
 ## Reductions for exhaustive checking
 
@@ -149,6 +155,9 @@ every peer, so this needs the request limits that abstraction 6 removes.
 | `S1_noWaitCycle` | invariant | the wait-for graph has no cycle. A process is blocked if parked on a full channel or on `cs.rsMtx` held by CONS; it waits on the channel's only consumer (CONS for `peerMsgQueue`, SYNC for `proposalChan`/`partChan`) or the lock holder. `deadlocked` is the greatest set of blocked processes all of whose waitees are in the set; S1 says it is empty. Environment steps are always enabled, so TLC's own deadlock check cannot see this. |
 | `S2_forwardOnce` | invariant | no (round, block) enters `proposalChan` twice |
 | `S3_decision` | invariant | a forward is never decided for a compact block whose identity differs from the entry stored for its round at decision time |
+| `S3_gossip` | invariant | `broadcastCompactBlock` never gossips a compact block whose identity differs from the entry stored for its round at that moment (see abstraction 19) |
+| `S3_noConflictingForward` | invariant | `S3_decision and S3_gossip` |
+| `S3_deliver` | invariant (informational) | no proposal enters `proposalChan` while its identity differs from the entry stored at that moment. Not expected to hold: the forward is claimed (`claimForward`, `handleCachedCompactBlock`) before the send, and a later `AddCommitment` for another header may replace the entry before the proposal enters the channel. Not in any make target |
 | `S2_strictPerRound` | invariant (informational) | at most one proposal of any identity per round enters `proposalChan`. Not expected to hold: an `AddCommitment` for another header replaces the entry, and the committed block's compact block is then forwarded once more, by design |
 | `sanity` | invariant | channel bounds, part counts, no DELIV slot reused |
 | `L1_eventualCompletion` | temporal | `fairness implies eventually(holdsBlock)`: with an honest proposer, the node eventually holds all `K` originals of some round |
@@ -195,7 +204,8 @@ added; header replaced an entry), so a replay can check it.
 | `prune` | yes | `Prune(H)` | no op (op 9 also moves to H+1): direct call | |
 | `retryWants` | yes | `retryWants()` | op 11 | |
 | `vote` | yes | consensus reactor into `peerMsgQueue` | none (consensus side) | |
-| `recvSendProp`, `recvGossip`, `recvSendPart` | no | RECV continuation | | round, block |
+| `recvSendProp`, `recvSendPart` | no | RECV continuation | | round, block |
+| `recvGossip` | no | `broadcastCompactBlock` + `recoverPartsFromMempool` | | round, block; `accepted` = gossiped (false: identity check failed, nothing sent, no mempool recovery); `idx` = mempool parts recovered |
 | `consApply`, `consSendProp`, `consSendPart`, `consHandle` | no | CONS steps | | |
 | `syncTakeProp`, `syncTakePart`, `syncReadRs`, `syncPush` | no | syncData steps | | |
 | `delivSendProp`, `delivRecover`, `delivSendPart` | no | `deliverCachedCompactBlock` | | round |
@@ -233,17 +243,24 @@ decoding by parity, a corrupt part on a stub, `X` forwarded through a stub,
 a cached compact block replaced between the pick and its apply).
 `make traces` regenerates them from fixed seeds.
 
+`traces/fixed_gossipSkippedWhileParkedTest` replays the `1011fdec8` race:
+RECV is parked on a full `proposalChan` with A(1) claimed, consensus reports
+a commitment for B at round 1, and after the send the gossip and the mempool
+recovery are skipped. `traces/gossipChecked_*` (the 4-step twin of
+`gossipUnchecked_*`) is not replayed: there RECV is not parked when the
+commitment arrives, and Go finishes the gossip before `AddCommitment` runs.
+
 ## How to run
 
 ```
 make deps        # checks quint 0.34.0, installs the Rust evaluator v0.8.0 (sha256-checked)
 make typecheck
-make test        # scenario tests, including both counterexamples
+make test        # scenario tests, including the counterexamples
 make simulate    # random simulation of the fixed model
-make verify      # TLC, exhaustive: S1, S1q, S2, S3_decision, sanity on fixedIdentity and fixedParts
-make gate        # ab6a3df reverted (fully and each half): requires S1 and S2 violations
+make verify      # TLC, exhaustive: S1, S1q, S2, S3_decision, S3_gossip, sanity on fixedIdentity and fixedParts
+make gate        # ab6a3df reverted (fully and each half): S1 and S2 violations; 1011fdec8 reverted: S3_gossip violation
 make liveness    # TLC: L1 on liveOneRound, plus the vacuity check
-make all         # all of the above (about 13 min)
+make all         # all of the above (about 14 min)
 
 make verify-cap2      # verify with capacities 2 (wants a larger machine; see results)
 make liveness-full    # L1 on rounds 0 and 1 (about 47 min)
@@ -258,33 +275,39 @@ the JVM heap (10 GB) and workers (`auto`).
 ## Results
 
 Machine: 4 cores, 15 GB, TLC with 4 workers. Times are wall clock of the
-make target (including quint's compilation, about 10 s per TLC run).
+make target (including quint's compilation, about 10 s per TLC run),
+measured on `main` at `d7615039e` plus this model.
 
 | target | check | coverage | result | time |
 |---|---|---|---|---|
-| `typecheck` | 3 files | | ok | 12 s |
-| `test` | 12 scenario tests | the listed runs | all pass | 18 s |
-| `simulate` | S1, S1q, S2, S3_decision, sanity on `fixedTraced` | random: 20000 runs x 60 steps | no violation | 29 s |
-| `verify` | S1, S1q, S2, S3_decision, sanity on `fixedIdentity` | exhaustive: 3,404,364 states, depth 31 | hold | 144 s |
-| | same on `fixedParts` | exhaustive: 7,047,792 states, depth 58 | hold | 463 s |
-| `verify` total | | | | 639 s |
-| `gate` | `prefix`: S1 (shortest cycle closes through `cs.rsMtx`) | BFS | violated, 9 states | 20 s |
-| | `prefix`: S1q (PROTOCO-3430 cycle through `peerMsgQueue`) | BFS | violated, 10 states | 21 s |
-| | `prefix`: S2 | BFS | violated, 8 states | 18 s |
+| `typecheck` | 3 files | | ok | 10 s |
+| `test` | 15 scenario tests | the listed runs | all pass | 20 s |
+| `simulate` | S1, S1q, S2, S3_decision, S3_gossip, sanity on `fixedTraced` | random: 20000 runs x 60 steps | no violation | 19 s |
+| `verify` | S1, S1q, S2, S3_decision, S3_gossip, sanity on `fixedIdentity` | exhaustive: 2,257,362 states, depth 30 | hold | 100 s |
+| | same on `fixedParts` | exhaustive: 7,047,792 states, depth 58 | hold | 462 s |
+| `verify` total | | | | 606 s |
+| `gate` | `prefix`: S1 (shortest cycle closes through `cs.rsMtx`) | BFS | violated | 20 s |
+| | `prefix`: S1q (PROTOCO-3430 cycle through `peerMsgQueue`) | BFS | violated | 23 s |
+| | `prefix`: S2 | BFS | violated | 19 s |
 | | `forwardOnceOnly`: S1 | BFS | violated | 19 s |
-| | `asyncOnly`: S2 | BFS | violated | 18 s |
-| `gate` total | | | | 96 s |
-| `liveness` | L1 on `liveOneRound` | exhaustive: 3,201 states | holds | 18 s |
-| | vacuity: L1 without fairness | | violated (expected) | 16 s |
-| `verify-cap2` | `fixedIdentityCap2` (48 cores, 200 GB heap) | exhaustive: 6,454,488 states, depth 31 | hold | 40 s |
-| | `fixedPartsCap2` (same machine) | exhaustive: 22,691,085 states, depth 58 | hold | 188 s |
-| `liveness-full` | L1 on `live` (rounds 0, 1) | exhaustive: 7,733,064 states, depth 60 | holds | 47 min (3 workers) |
+| | `asyncOnly`: S2 | BFS | violated | 17 s |
+| | `gossipUnchecked`: S3_gossip | BFS | violated, 5 states | 16 s |
+| `gate` total | | | | 114 s |
+| `liveness` | L1 on `liveOneRound` | exhaustive: 3,201 states | holds | 33 s (with the vacuity check) |
+| | vacuity: L1 without fairness | | violated (expected) | 17 s |
+| `all` | the six targets above, run one after the other | | pass | 802 s |
+| `traces` | | | 24 traces written | 76 s |
+| `replay` | 200 fresh random traces + `traces/` against the Go reactor | | pass (3 runs) | 34-36 s |
+| `verify-cap2` | `fixedIdentityCap2`, `fixedPartsCap2` | exhaustive: 6,454,488 and 22,691,085 states | hold (S1, S1q, S2, S3_decision; measured on a 48-core machine before `S3_gossip` was added; not re-run) | 40 s, 188 s |
+| `liveness-full` | L1 on `live` (rounds 0, 1) | exhaustive: 7,733,064 states, depth 60 | holds (measured before `GOSSIP_CHECK` was added; the honest environment never replaces a full `A` entry with another header, so the check does not change its runs) | 47 min (3 workers) |
 
 S1q = `S1_noQueueCycle`.
-`S2_strictPerRound` fails by design (see Properties).
+`S2_strictPerRound` and `S3_deliver` are not expected to hold (see
+Properties) and are not checked by any target.
 
-Coverage statement: S1, S2 and S3 (the forward decision) hold for
-every reachable state of the two bounded configurations above (one height,
-two rounds, `K = 4`, two peers), with channel capacities 1 and 2, under the
-abstractions listed here. The combined configuration is only simulated. L1 holds for the honest
-environment with a silent second peer.
+Coverage statement: S1, S2 and S3 (the forward decision and the gossip) hold
+for every reachable state of the two bounded configurations above (one
+height, two rounds, `K = 4`, two peers, channel capacities 1), under the
+abstractions listed here; abstraction 19 makes the gossip check atomic with
+the sends. The combined configuration is only simulated. L1 holds for the
+honest environment with a silent second peer.

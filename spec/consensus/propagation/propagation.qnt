@@ -55,6 +55,10 @@ module propagation {
   const FORWARD_ONCE: bool
   // ab6a3df, half (b): handleCachedCompactBlock hands off to a goroutine.
   const ASYNC_DELIVERY: bool
+  // 1011fdec8 (#3840): broadcastCompactBlock gossips only while the stored
+  // entry still has the compact block's identity; otherwise it returns false
+  // and processValidatedCompactBlock skips recoverPartsFromMempool.
+  const GOSSIP_CHECK: bool
   // record lastAction and the observation logs. They are history variables:
   // no guard reads them. Turn off for exhaustive checking.
   const TRACE: bool
@@ -418,25 +422,36 @@ module propagation {
   }
 
   // processValidatedCompactBlock after the send, when AddProposal added the
-  // entry: broadcastCompactBlock (no identity re-check), then
-  // recoverPartsFromMempool.
+  // entry: broadcastCompactBlock, then recoverPartsFromMempool. With
+  // GOSSIP_CHECK (1011fdec8), broadcastCompactBlock first checks under pmtx
+  // that the entry at (H, round) still has the compact block's identity; on
+  // a mismatch it sends nothing and returns false, and the mempool recovery
+  // is skipped. The check and the sends are one step here; in Go pmtx is
+  // released between them (README, abstraction 19).
   action recvGossip: bool = {
     val r = recv.round
     val e = prop.entries.get(r)
+    val same = sameIdentity(e, recv.block)
+    val doGossip = not(GOSSIP_CHECK) or same
     val rec = memRecover(e, recv.block, relevantAt(prop, r))
     all {
       recv.pc == "gossip",
       // gossiped is observation only (no guard reads it): kept under TRACE
-      prop' = {
-        ...prop,
-        entries: prop.entries.set(r, rec._1),
-        gossiped: if (TRACE) prop.gossiped.union(Set((r, recv.block))) else prop.gossiped
-      },
-      hist' = { ...hist, s3Gossip: hist.s3Gossip or not(sameIdentity(e, recv.block)) },
-      recv' = if (rec._2 > 0) { ...recvIdle, pc: "sendParts", round: r, n: rec._2, decodeAfter: false } else recvIdle,
+      prop' =
+        if (not(doGossip)) prop
+        else {
+          ...prop,
+          entries: prop.entries.set(r, rec._1),
+          gossiped: if (TRACE) prop.gossiped.union(Set((r, recv.block))) else prop.gossiped
+        },
+      hist' = if (doGossip) { ...hist, s3Gossip: hist.s3Gossip or not(same) } else hist,
+      recv' = if (doGossip and rec._2 > 0) { ...recvIdle, pc: "sendParts", round: r, n: rec._2, decodeAfter: false } else recvIdle,
       cons' = cons, syncd' = syncd, deliv' = deliv,
       propChan' = propChan, partChan' = partChan, pmq' = pmq, obs' = obs,
-      lastAction' = traced({ ...mkAct("recvGossip", false), peer: recv.from, round: r, block: recv.block, idx: rec._2 }),
+      lastAction' = traced({
+        ...mkAct("recvGossip", false), peer: recv.from, round: r, block: recv.block,
+        idx: if (doGossip) rec._2 else 0, accepted: doGossip
+      }),
     }
   }
 
@@ -871,6 +886,16 @@ module propagation {
   // S3: a forward to consensus is never decided for a compact block that
   // conflicts with the identity stored for its (H, round) at decision time.
   val S3_decision: bool = not(hist.s3Decision)
+  // S3: a compact block is never gossiped (broadcastCompactBlock) while it
+  // conflicts with the identity stored for its (H, round) at that moment.
+  val S3_gossip: bool = not(hist.s3Gossip)
+  val S3_noConflictingForward: bool = S3_decision and S3_gossip
+  // informational, not expected to hold: no proposal enters proposalChan
+  // while it conflicts with the entry stored at that moment. The forward is
+  // claimed (claimForward, handleCachedCompactBlock) before the send, and a
+  // later AddCommitment for another header may replace the entry before the
+  // proposal enters the channel.
+  val S3_deliver: bool = not(hist.s3Deliver)
   // informational: at most one proposal (any identity) per round
   val S2_strictPerRound: bool = ROUNDS.forall(r => hist.fwd.filter(x => x._1 == r).size() <= 1)
   // model sanity
@@ -879,7 +904,7 @@ module propagation {
     not(hist.delivOverwrite),
     ROUNDS.forall(r => prop.entries.get(r).orig.subseteq(ORIG) and prop.entries.get(r).par <= K),
   }
-  val safety: bool = S1_noWaitCycle and S2_forwardOnce and S3_decision
+  val safety: bool = S1_noWaitCycle and S2_forwardOnce and S3_noConflictingForward
 
   // L1 goal: the node holds all K originals of some round's entry.
   val holdsBlock: bool = ROUNDS.exists(r => prop.entries.get(r).kind != "none" and complete(prop.entries.get(r)))

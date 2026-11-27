@@ -6,8 +6,8 @@
 // behaviour of the other variables (no guard reads them). *Traced instances
 // record them, for simulation, tests and ITF traces.
 
-// ab6a3df applied (the code on main): `make verify` checks S1, S2 and
-// S3_decision. The safety check is
+// ab6a3df applied (the code on main): `make verify` checks S1, S2,
+// S3_decision and S3_gossip. The safety check is
 // split in two exhaustive configurations (see README, "Reductions"):
 //   fixedIdentity: byzantine proposer (A, B, X; commitments for A or B), no
 //                  parts: forwarding, identity and channel/lock logic.
@@ -17,7 +17,7 @@ module fixedIdentity {
   import propagation(
     K = 4, MEMPOOL = 0, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = false, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = false, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -25,7 +25,7 @@ module fixedParts {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A"), COMMITS = Set("A"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -34,7 +34,7 @@ module fixedIdentityCap2 {
   import propagation(
     K = 4, MEMPOOL = 0, CAP_PROP = 2, CAP_PART = 2, CAP_PMQ = 2, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = false, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = false, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -42,7 +42,7 @@ module fixedPartsCap2 {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 2, CAP_PART = 2, CAP_PMQ = 2, MAX_ROUND = 1,
     BLOCKS = Set("A"), COMMITS = Set("A"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -52,7 +52,7 @@ module fixed {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -61,7 +61,7 @@ module prefix {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = false, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = false, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -70,7 +70,7 @@ module forwardOnceOnly {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = false, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -79,7 +79,17 @@ module asyncOnly {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = false, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = false, PARTS = true, LOG_CAP = 4
+  ).* from "./propagation"
+}
+
+// 1011fdec8 reverted (GOSSIP_CHECK = false), on the identity configuration:
+// the gate expects an S3_gossip violation.
+module gossipUnchecked {
+  import propagation(
+    K = 4, MEMPOOL = 0, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
+    BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = false, TRACE = false, TRACK_REQUESTS = false, PARTS = false, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -88,7 +98,7 @@ module live {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A"), COMMITS = Set("A"), VOTES = false,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -97,7 +107,7 @@ module liveOneRound {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 0,
     BLOCKS = Set("A"), COMMITS = Set("A"), VOTES = false,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = false, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 4
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = false, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 4
   ).* from "./propagation"
 }
 
@@ -106,7 +116,7 @@ module fixedTraced {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 }
 
@@ -114,7 +124,7 @@ module prefixTraced {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = false, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = false, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 }
 
@@ -122,7 +132,7 @@ module forwardOnceOnlyTraced {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = false, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = true, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 }
 
@@ -130,6 +140,6 @@ module asyncOnlyTraced {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = false, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 }
