@@ -9,7 +9,7 @@ module prefixTest {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = false, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = false, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 
   // p1 relays A for round 0; it reaches proposalChan and the node rebuilds
@@ -64,7 +64,7 @@ module forwardOnceOnlyTest {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = false, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = true, ASYNC_DELIVERY = false, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 
   // without duplicates: syncData took a part and waits for cs.rsMtx, the
@@ -88,7 +88,7 @@ module asyncOnlyTest {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = false, ASYNC_DELIVERY = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = false, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 
   run asyncOnlyDuplicateTest =
@@ -103,12 +103,58 @@ module asyncOnlyTest {
       .expect(not(S2_forwardOnce) and S1_noWaitCycle)
 }
 
+// 1011fdec8 reverted (GOSSIP_CHECK = false), ab6a3df applied
+module gossipUncheckedTest {
+  import propagation(
+    K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
+    BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = false, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+  ).* from "./propagation"
+
+  // S3_gossip counterexample: A is added and its forward claimed; consensus
+  // reports a commitment for B at round 0, which replaces the entry; the
+  // proposal is sent; A is then gossiped although the entry is B's.
+  run gossipAfterReplaceTest =
+    init
+      .then(envCompactBlock("p1", 0, "A"))
+      .then(envAddCommitment(0, "B"))
+      .expect(prop.entries.get(0).kind == "stub" and prop.entries.get(0).psh == "B")
+      .then(recvSendProp)
+      .then(recvGossip)
+      .expect(prop.gossiped == Set((0, "A")) and not(S3_gossip) and S3_decision)
+}
+
+// the fixed twin of gossipUncheckedTest (all fixes applied). A separate
+// module so that its trace (gossipChecked_*) is not replayed as a fixed_*
+// trace: in this schedule RECV is not parked when the commitment arrives,
+// which Go cannot reproduce (it gossips before AddCommitment runs).
+// fixedTest.gossipSkippedWhileParkedTest is the replayable variant.
+module gossipCheckedTest {
+  import propagation(
+    K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
+    BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+  ).* from "./propagation"
+
+  // the gossipAfterReplaceTest inputs with the gossip check: the compact
+  // block is not gossiped and its mempool part is not recovered.
+  run gossipSkippedAfterReplaceTest =
+    init
+      .then(envCompactBlock("p1", 0, "A"))
+      .then(envAddCommitment(0, "B"))
+      .then(recvSendProp)
+      .then(recvGossip)
+      .expect(prop.gossiped == Set() and recv.pc == "idle" and prop.entries.get(0).orig == Set()
+              and not(lastAction.accepted) and S3_gossip and not(S3_deliver))
+
+}
+
 // ab6a3df applied
 module fixedTest {
   import propagation(
     K = 4, MEMPOOL = 1, CAP_PROP = 1, CAP_PART = 1, CAP_PMQ = 1, MAX_ROUND = 1,
     BLOCKS = Set("A", "B", "X"), COMMITS = Set("A", "B"), VOTES = true,
-    FORWARD_ONCE = true, ASYNC_DELIVERY = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
+    FORWARD_ONCE = true, ASYNC_DELIVERY = true, GOSSIP_CHECK = true, TRACE = true, TRACK_REQUESTS = true, PARTS = true, LOG_CAP = 6
   ).* from "./propagation"
 
   run firstCompactBlock =
@@ -178,6 +224,27 @@ module fixedTest {
       .then(envPart("p1", 0, "orig", false, true)).then(recvSendPart).then(syncTakePart).then(syncReadRs).then(syncPush).then(consHandle)
       .then(envPart("p1", 0, "orig", false, true)).then(recvSendPart)
       .expect(holdsBlock)
+
+  // the same race with RECV parked on a full proposalChan, as it must be in
+  // Go for the commitment to arrive before the gossip: A(0) still sits in
+  // proposalChan when A(1) is claimed; consensus reports a commitment for B
+  // at round 1; once syncData takes A(0), A(1) is sent and its gossip is
+  // skipped.
+  run gossipSkippedWhileParkedTest =
+    init
+      .then(envCompactBlock("p1", 0, "A"))
+      .then(recvSendProp)
+      .then(recvGossip)
+      .then(recvSendPart)
+      .then(envEnterRound(1, "p1"))
+      .then(envCompactBlock("p1", 1, "A"))
+      .expect(recv.pc == "sendProp" and propChan.length() == CAP_PROP)
+      .then(envAddCommitment(1, "B"))
+      .then(syncTakeProp)
+      .then(recvSendProp)
+      .then(recvGossip)
+      .expect(prop.gossiped == Set((0, "A")) and recv.pc == "idle" and prop.entries.get(1).kind == "stub"
+              and not(lastAction.accepted) and S3_gossip and S3_decision)
 
   // corrupt or unrequested parts are dropped
   run badPartsDroppedTest =
