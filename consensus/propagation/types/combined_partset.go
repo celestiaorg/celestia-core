@@ -137,6 +137,23 @@ func (cps *CombinedPartSet) RecoverOriginals(proofs []*merkle.Proof) ([]*types.P
 	return parts, err
 }
 
+// FallBackToOriginals drops the parity parts and stops the set from decoding
+// again. It is called when decoding failed, which means the parity data or the
+// last part length in the compact block is wrong. Only the proposer's signature
+// covers those, while the original parts are bound to the block ID. After this
+// call the set only counts and accepts original parts, like a catchup set, so
+// the missing originals are requested from peers.
+func (cps *CombinedPartSet) FallBackToOriginals() {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	originalTotal := int(cps.original.Total())
+	for index := originalTotal; index < cps.totalMap.Size(); index++ {
+		cps.totalMap.SetIndex(index, false)
+	}
+	cps.parity = &types.PartSet{}
+	cps.catchup = true
+}
+
 // BuildParity encodes the parity of complete originals, as the proposer did,
 // and keeps it only if it matches the committed parity root. It encodes
 // outside the lock so parts stay servable meanwhile.
@@ -188,6 +205,12 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 			cps.totalMap.SetIndex(int(part.Index), true)
 		}
 		return added, err
+	}
+
+	// a set without parity, like one that fell back to originals, takes no
+	// parity parts.
+	if cps.parity.Total() == 0 {
+		return false, nil
 	}
 
 	// Adjust the index to be relative to the parity set.

@@ -196,6 +196,45 @@ func TestRecoverOriginalsRejectsWrongParity(t *testing.T) {
 	require.False(t, cps.IsComplete())
 }
 
+// TestFallBackToOriginals checks that a set whose decode failed stops counting
+// parity parts and completes from original parts alone.
+func TestFallBackToOriginals(t *testing.T) {
+	cb, ops, eps, proofs := testCompactBlock(t, cmtrand.Bytes(5*int(cmttypes.BlockPartSizeBytes)))
+	total := int(ops.Total())
+	lastOriginal := total - 1
+
+	// the proposer signed a wrong last part length, so the last original
+	// cannot be rebuilt from parity.
+	cb.LastLen--
+	cps := addParts(t, cb, ops, eps, proofs, append(seq(0, lastOriginal), total))
+	require.True(t, cps.CanDecode())
+	_, err := cps.RecoverOriginals(proofs)
+	require.Error(t, err)
+
+	cps.FallBackToOriginals()
+
+	require.False(t, cps.CanDecode())
+	require.False(t, cps.IsComplete())
+	require.Zero(t, cps.Parity().Total())
+	require.Equal(t, lastOriginal, len(cps.BitArray().GetTrueIndices()), "only originals are counted")
+	for index := total; index < 2*total; index++ {
+		require.False(t, cps.HasPart(index), "parity %d", index)
+	}
+	require.Equal(t, []int{lastOriginal}, cps.MissingOriginal().GetTrueIndices())
+
+	// parity parts are no longer taken.
+	parityIndex := total + 1
+	added, err := cps.AddPart(&RecoveryPart{Index: uint32(parityIndex), Data: eps.GetPart(1).Bytes}, *proofs[parityIndex])
+	require.NoError(t, err)
+	require.False(t, added)
+
+	// the missing original completes the set.
+	added, err = cps.AddPart(&RecoveryPart{Index: uint32(lastOriginal), Data: ops.GetPart(lastOriginal).Bytes}, *proofs[lastOriginal])
+	require.NoError(t, err)
+	require.True(t, added)
+	require.True(t, cps.IsComplete())
+}
+
 func seq(from, to int) []int {
 	out := make([]int, 0, to-from)
 	for i := from; i < to; i++ {

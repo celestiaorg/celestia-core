@@ -654,10 +654,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 	recovered, err := parts.RecoverOriginals(proofs)
-	parts.IsDecoding.Store(false)
 	if err != nil {
-		blockProp.Logger.Error("failed to recover original parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+		// the parity data or the last part length that the proposer signed is
+		// wrong, so the parity parts are useless. Without this, the parity
+		// parts keep counting as progress and the missing originals are never
+		// requested.
+		blockProp.Logger.Error("failed to recover original parts, falling back to requesting originals", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+		parts.FallBackToOriginals()
 	}
+	parts.IsDecoding.Store(false)
 	if len(recovered) == 0 {
 		return
 	}

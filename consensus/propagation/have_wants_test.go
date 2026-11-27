@@ -308,6 +308,61 @@ func TestRelayBuildsParityAfterCompleting(t *testing.T) {
 	require.Eventually(t, func() bool { return leafParts.Parity().IsComplete() }, RetryTime/2, 10*time.Millisecond, "the leaf built no parity")
 }
 
+// TestFailedDecodeFallsBackToRequestingOriginals checks that a node whose
+// decode failed, because the compact block it holds has a wrong last part
+// length, requests the missing original from a peer and completes the block.
+func TestFailedDecodeFallsBackToRequestingOriginals(t *testing.T) {
+	reactors, switches := createTestReactors(2, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	victim, honest := reactors[0], reactors[1]
+	victim.requestTimeout = 100 * time.Millisecond
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	honestCompactBlock, parity, _ := compactBlockFor(t, prop, ps, metaData)
+	badCompactBlock, _, _ := compactBlockFor(t, prop, ps, metaData)
+	require.Greater(t, badCompactBlock.LastLen, uint32(1))
+	badCompactBlock.LastLen--
+	total := int(ps.Total())
+	lastOriginal := total - 1
+
+	// the honest peer holds the whole block.
+	require.True(t, honest.AddProposal(honestCompactBlock))
+	_, honestParts, _, has := honest.getAllState(1, 0, false)
+	require.True(t, has)
+	honestParts.SetProposalData(ps, parity)
+
+	// the victim got the bad compact block and then every parity part.
+	require.True(t, victim.AddProposal(badCompactBlock))
+	_, victimParts, _, has := victim.getAllState(1, 0, false)
+	require.True(t, has)
+	parityIndexes := make([]int, 0, total)
+	for index := total; index < 2*total; index++ {
+		parityIndexes = append(parityIndexes, index)
+	}
+	victim.getPeer(honest.self).AddRequests(1, 0, createBitArray(2*total, parityIndexes))
+	for _, index := range parityIndexes {
+		victim.handleRecoveryPart(honest.self, &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  0,
+			Index:  uint32(index),
+			Data:   parity.GetPart(index - total).Bytes,
+		})
+	}
+
+	// the decode rebuilt every original except the last one, which does not
+	// match its hash when cut to the wrong length.
+	require.False(t, victimParts.IsComplete())
+	require.Equal(t, []int{lastOriginal}, victimParts.MissingOriginal().GetTrueIndices())
+	heldParts := len(victimParts.BitArray().GetTrueIndices())
+	require.Equal(t, int32(1), countRemainingParts(int(victimParts.Total()), heldParts), "the missing original must still count as remaining")
+
+	victim.retryWants()
+
+	require.Eventually(t, victimParts.IsComplete, 2*time.Second, 10*time.Millisecond, "the victim never fetched the missing original")
+}
+
 // TestMempoolRecoveryServesParkedWants checks that a want parked for a part
 // is served when that part is later rebuilt from the mempool.
 func TestMempoolRecoveryServesParkedWants(t *testing.T) {
