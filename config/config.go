@@ -1168,6 +1168,9 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 type BlockSyncConfig struct {
 	Version    string `mapstructure:"version"`
 	VerifyData bool   `mapstructure:"verify_data"`
+	// Pipeline prepares the next block while the current one is applied.
+	// The synced blocks and state are identical either way.
+	Pipeline bool `mapstructure:"pipeline"`
 }
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
@@ -1175,6 +1178,7 @@ func DefaultBlockSyncConfig() *BlockSyncConfig {
 	return &BlockSyncConfig{
 		Version:    "v0",
 		VerifyData: true,
+		Pipeline:   true,
 	}
 }
 

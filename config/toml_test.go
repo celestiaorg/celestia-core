@@ -194,3 +194,7 @@ func TestBlockstoreMemtableDefaultsForOldConfig(t *testing.T) {
 	require.Equal(t, 64, cfg.Storage.BlockstoreMemtableSizeMB)
 	require.True(t, cfg.Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction)
 }
+
+func TestBlockSyncPipelineDefault(t *testing.T) {
+	require.True(t, config.DefaultConfig().BlockSync.Pipeline)
+}
