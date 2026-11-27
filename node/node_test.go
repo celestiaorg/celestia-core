@@ -19,6 +19,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
+	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/evidence"
@@ -632,4 +633,54 @@ func TestNodePrivValidatorGRPCServer(t *testing.T) {
 	signBytes, err := types.RawBytesMessageSignBytes(n.genesisDoc.ChainID, uniqueID, rawBytes)
 	require.NoError(t, err)
 	assert.True(t, pubKey.VerifySignature(signBytes, resp.Signature))
+}
+
+// blockLimitsApp is a kvstore app that reports per-block limits in Info.
+type blockLimitsApp struct {
+	*kvstore.Application
+	blockLimits abci.BlockLimits
+}
+
+func (app *blockLimitsApp) Info(ctx context.Context, req *abci.RequestInfo) (*abci.ResponseInfo, error) {
+	res, err := app.Application.Info(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	res.BlockLimits = app.blockLimits
+	return res, nil
+}
+
+func TestNodeSetsMempoolBlockLimitsFromInfo(t *testing.T) {
+	config := test.ResetTestRoot("node_mempool_block_limits_test")
+	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
+
+	limits := abci.BlockLimits{
+		MaxSdkGas:          100_000_000,
+		MaxSdkMessages:     300,
+		MaxZkProofMessages: 64,
+		MaxIsmSignatures:   2048,
+	}
+	app := &blockLimitsApp{
+		Application: kvstore.NewInMemoryApplication(),
+		blockLimits: limits,
+	}
+
+	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+	require.NoError(t, err)
+
+	n, err := NewNode(config,
+		privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile()),
+		nodeKey,
+		proxy.NewLocalClientCreator(app),
+		DefaultGenesisDocProviderFunc(config),
+		cfg.DefaultDBProvider,
+		DefaultMetricsProvider(config.Instrumentation),
+		log.TestingLogger(),
+	)
+	require.NoError(t, err)
+
+	txPool, ok := n.Mempool().(*cat.TxPool)
+	require.True(t, ok)
+	require.Equal(t, limits, txPool.BlockLimits())
 }

@@ -551,7 +551,21 @@ func (blockExec *BlockExecutor) Commit(
 		TxPostCheck(state),
 	)
 
+	// Pass on the app's per-block limits while the mempool is still locked,
+	// so the next reap applies them.
+	setMempoolBlockLimits(blockExec.mempool, abciResponse.BlockLimits)
+
 	return res.RetainHeight, err
+}
+
+// setMempoolBlockLimits passes the app's per-block limits to the mempool, if
+// the mempool applies them when it reaps.
+func setMempoolBlockLimits(mp mempool.Mempool, limits abci.BlockLimits) {
+	limitsSetter, ok := mp.(mempool.BlockLimitsSetter)
+	if !ok {
+		return
+	}
+	limitsSetter.SetBlockLimits(limits)
 }
 
 //---------------------------------------------------------

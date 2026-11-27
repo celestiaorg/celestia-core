@@ -251,6 +251,8 @@ type testApp struct {
 	AppHash          []byte
 	// AppVersion is the app version FinalizeBlock returns. Zero means 1.
 	AppVersion uint64
+	// BlockLimits are the per-block limits FinalizeBlock returns.
+	BlockLimits abci.BlockLimits
 }
 
 var _ abci.Application = (*testApp)(nil)
@@ -273,8 +275,9 @@ func (app *testApp) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBl
 				App: app.appVersion(),
 			},
 		},
-		TxResults: txResults,
-		AppHash:   app.AppHash,
+		TxResults:   txResults,
+		AppHash:     app.AppHash,
+		BlockLimits: app.BlockLimits,
 	}, nil
 }
 

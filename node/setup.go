@@ -205,6 +205,22 @@ func doHandshake(
 	return softwareVersion, nil
 }
 
+// setMempoolBlockLimits asks the app for its per-block limits and passes them
+// to the mempool, so that the first reap after a restart applies them. After
+// that the block executor refreshes them from every FinalizeBlock response.
+func setMempoolBlockLimits(ctx context.Context, proxyApp proxy.AppConns, mp mempl.Mempool) error {
+	limitsSetter, ok := mp.(mempl.BlockLimitsSetter)
+	if !ok {
+		return nil
+	}
+	res, err := proxyApp.Query().Info(ctx, proxy.RequestInfo)
+	if err != nil {
+		return fmt.Errorf("error calling Info for the block limits: %w", err)
+	}
+	limitsSetter.SetBlockLimits(res.BlockLimits)
+	return nil
+}
+
 func logNodeStartupInfo(state sm.State, pubKey crypto.PubKey, logger, consensusLogger log.Logger) {
 	// Log the version info.
 	logger.Info("Version info",

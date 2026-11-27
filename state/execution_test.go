@@ -81,6 +81,60 @@ func TestApplyBlock(t *testing.T) {
 	assert.EqualValues(t, 1, state.Version.Consensus.App, "App version wasn't updated")
 }
 
+// blockLimitsMempool is a mempool that records the block limits it is given.
+type blockLimitsMempool struct {
+	*mpmocks.Mempool
+	blockLimits []abci.BlockLimits
+}
+
+func (mp *blockLimitsMempool) SetBlockLimits(limits abci.BlockLimits) {
+	mp.blockLimits = append(mp.blockLimits, limits)
+}
+
+func TestApplyBlockSetsMempoolBlockLimits(t *testing.T) {
+	limits := abci.BlockLimits{
+		MaxSdkGas:          100_000_000,
+		MaxSdkMessages:     300,
+		MaxZkProofMessages: 64,
+		MaxIsmSignatures:   2048,
+	}
+	app := &testApp{BlockLimits: limits}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	require.NoError(t, proxyApp.Start())
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+
+	mockMempool := &mpmocks.Mempool{}
+	mockMempool.On("Lock").Return()
+	mockMempool.On("Unlock").Return()
+	mockMempool.On("FlushAppConn", mock.Anything).Return(nil)
+	mockMempool.On("Update",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	mp := &blockLimitsMempool{Mempool: mockMempool}
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
+		mp, sm.EmptyEvidencePool{}, blockStore)
+
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
+	require.NoError(t, err)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+
+	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
+	require.NoError(t, err)
+
+	require.Equal(t, []abci.BlockLimits{limits}, mp.blockLimits)
+}
+
 // txCapturingApp is a test ABCI application that records the transactions
 // received in FinalizeBlock so they can be inspected in tests.
 type txCapturingApp struct {
