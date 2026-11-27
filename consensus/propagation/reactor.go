@@ -84,7 +84,9 @@ type Reactor struct {
 	partChan     chan types.PartInfo
 	proposalChan chan ProposalAndSrc
 
-	mtx         *sync.Mutex
+	mtx *sync.Mutex
+	// requestMtx makes peers take turns when they spend the request budget.
+	requestMtx  sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool

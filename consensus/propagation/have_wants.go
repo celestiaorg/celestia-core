@@ -119,10 +119,13 @@ func ReqLimit(partsCount int) int {
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	defer blockProp.ProtectPanic(ps.peer)
+	// waitingForParts is true when this peer has its full share of requests.
+	// Asking again only makes sense once one of its parts arrives.
+	waitingForParts := false
 	for {
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 
-		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
+		if availableReqs > 0 && len(ps.receivedHaves) > 0 && !waitingForParts {
 			ps.RequestsReady()
 		}
 
@@ -134,6 +137,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			if !ok {
 				return
 			}
+			waitingForParts = false
 			if !blockProp.safeRelevant(part.height, part.round) {
 				continue
 			}
@@ -237,28 +241,196 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 			wants.MissingPartsCount = missingPartsCount
 
-			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
+			partsToAskLater, err := blockProp.sendWantsWithinBudget(ps, wants, parts)
 			if err != nil {
 				blockProp.Logger.Error("error sending wants", "err", err)
 			}
+			// the peer still has these parts. Keep them, so we can ask for
+			// them once it sent us some of what we already requested.
+			ps.requeueHaves(wants.Height, wants.Round, partsToAskLater)
+			waitingForParts = len(partsToAskLater) > 0
 		}
 	}
+}
+
+// silentPeersTolerated is how many peers can take our requests and never
+// answer before we have to wait for the retry.
+const silentPeersTolerated = 2
+
+// requestLimits returns how many parts we can ask one peer for, and how many
+// we can ask for in total. missing is the number of parts we still need,
+// totalParts is the size of the block with parity.
+//
+// We can't tell which peers will really send us parts. So no peer gets more
+// than a slice of what we need, and the total has room for
+// silentPeersTolerated peers that send nothing.
+//
+// Example with a 62 part block where we still need 21:
+//   - one peer gets at most 21 / 2 rounded up = 11 parts
+//   - in total we ask for at most 21 + 2 * 11 = 43 parts
+//   - if two peers take 11 each and send nothing, 21 are left for the others
+func requestLimits(missing, totalParts int) (maxPerPeer, budget int) {
+	// the slice we want: big enough that silentPeersTolerated honest peers
+	// cover everything we need.
+	wantedSlice := (missing + silentPeersTolerated - 1) / silentPeersTolerated
+
+	// the slice that is safe. We only need half of the block, the other half
+	// is spare. A part we asked a silent peer for can't be asked from anyone
+	// else, so the silent peers together must not hold more than the spare
+	// half. This only matters when we have almost no parts yet.
+	spareParts := totalParts / 2
+	safeSlice := spareParts / silentPeersTolerated
+
+	maxPerPeer = min(wantedSlice, safeSlice)
+	// a tiny block gives 0 here, but we still have to ask someone.
+	if maxPerPeer < 1 {
+		maxPerPeer = 1
+	}
+
+	budget = missing + silentPeersTolerated*maxPerPeer
+	return maxPerPeer, budget
+}
+
+// trimmedWants is what is left to do after the wants were trimmed and sent.
+type trimmedWants struct {
+	// havesToBroadcast are the haves for the parts we requested. Nil if we
+	// requested nothing.
+	havesToBroadcast *proptypes.HaveParts
+	// partsToAskLater are the parts we didn't request only because the peer
+	// already has its full share. We can ask for them when its parts arrive.
+	partsToAskLater []int
+}
+
+// sendWantsWithinBudget drops the wants that go over the request budget and
+// sends the rest. Without the budget, we'd ask every peer for parts and get
+// way more than we need.
+//
+// It returns the parts that this peer can be asked for later, once it sent
+// some of the parts we already requested from it.
+func (blockProp *Reactor) sendWantsWithinBudget(ps *PeerState, wants *proptypes.WantParts, parts *proptypes.CombinedPartSet) ([]int, error) {
+	trimmed, err := blockProp.trimAndSendWants(ps, wants, parts)
+	if err != nil {
+		return nil, err
+	}
+	if trimmed.havesToBroadcast != nil {
+		blockProp.broadcastHaves(trimmed.havesToBroadcast, ps.peer.ID(), wants.Parts.Size())
+	}
+	return trimmed.partsToAskLater, nil
+}
+
+// trimAndSendWants trims the wants to the budget and sends what is left.
+func (blockProp *Reactor) trimAndSendWants(ps *PeerState, wants *proptypes.WantParts, parts *proptypes.CombinedPartSet) (trimmedWants, error) {
+	// peers take turns here, so two of them can't spend the same budget.
+	blockProp.requestMtx.Lock()
+	defer blockProp.requestMtx.Unlock()
+
+	// count again, parts may have arrived while we waited for our turn.
+	have := parts.BitArray()
+	missing := int(countRemainingParts(int(parts.Total()), len(have.GetTrueIndices())))
+	if missing == 0 {
+		return trimmedWants{}, nil
+	}
+	wants.MissingPartsCount = int32(missing)
+
+	requested := blockProp.requestedParts(wants.Height, wants.Round, have.Size())
+
+	// parts we already asked for and are still waiting on use up the budget.
+	maxPerPeer, budget := requestLimits(missing, int(parts.Total()))
+	budget -= blockProp.inFlightRequests(wants.Height, wants.Round, have, maxPerPeer)
+	askedFromPeer := blockProp.outstandingRequests(ps, wants.Height, wants.Round, have)
+
+	var partsToAskLater []int
+	reqLimit := ReqLimit(int(parts.Total()))
+	for _, index := range wants.Parts.GetTrueIndices() {
+		// we may have got this part while we waited for our turn.
+		if have.GetIndex(index) {
+			wants.Parts.SetIndex(index, false)
+			continue
+		}
+		if requested.GetIndex(index) {
+			// another peer may have been asked for this part in the meantime.
+			requesters := len(blockProp.countRequests(wants.Height, wants.Round, index))
+			if requesters >= reqLimit {
+				wants.Parts.SetIndex(index, false)
+			}
+			// asking a second peer for the same part (small blocks) is free.
+			continue
+		}
+		// this peer has its full share for now.
+		if askedFromPeer >= maxPerPeer {
+			wants.Parts.SetIndex(index, false)
+			partsToAskLater = append(partsToAskLater, index)
+			continue
+		}
+		if budget <= 0 {
+			wants.Parts.SetIndex(index, false)
+			continue
+		}
+		budget--
+		askedFromPeer++
+	}
+
+	if wants.Parts.IsEmpty() {
+		return trimmedWants{partsToAskLater: partsToAskLater}, nil
+	}
+	haves, err := blockProp.convertWantToHave(wants)
+	if err != nil {
+		return trimmedWants{}, err
+	}
+	blockProp.sendWant(ps, wants)
+	return trimmedWants{havesToBroadcast: haves, partsToAskLater: partsToAskLater}, nil
+}
+
+// outstandingRequests counts the parts we requested from this peer and don't
+// have yet.
+func (blockProp *Reactor) outstandingRequests(ps *PeerState, height int64, round int32, have *bits.BitArray) int {
+	reqs, has := ps.GetRequests(height, round)
+	if !has || reqs.Size() != have.Size() {
+		return 0
+	}
+	return len(reqs.Sub(have).GetTrueIndices())
+}
+
+// inFlightRequests counts the parts we asked for and are still waiting on.
+//
+// One peer counts for at most maxPerPeer parts. The share gets smaller as
+// parts arrive, but a silent peer still holds the bigger share it got
+// earlier. Counting all of it would use up the whole budget, and we couldn't
+// ask anyone for the last parts.
+func (blockProp *Reactor) inFlightRequests(height int64, round int32, have *bits.BitArray, maxPerPeer int) int {
+	inFlight := 0
+	counted := bits.NewBitArray(have.Size())
+	for _, peer := range blockProp.getPeers() {
+		requests, has := peer.GetRequests(height, round)
+		if !has || requests.Size() != have.Size() {
+			continue
+		}
+		waitingOn := requests.Sub(have)
+		// a part asked from two peers (small blocks) only counts once.
+		notCountedYet := len(waitingOn.Sub(counted).GetTrueIndices())
+		inFlight += min(notCountedYet, maxPerPeer)
+		counted = counted.Or(waitingOn)
+	}
+	return inFlight
+}
+
+// requestedParts returns the parts we already requested from any peer.
+func (blockProp *Reactor) requestedParts(height int64, round int32, size int) *bits.BitArray {
+	requested := bits.NewBitArray(size)
+	for _, peer := range blockProp.getPeers() {
+		reqs, has := peer.GetRequests(height, round)
+		if !has || reqs.Size() != size {
+			continue
+		}
+		requested = requested.Or(reqs)
+	}
+	return requested
 }
 
 // countRemainingParts counts the remaining parts to decode a block.
 func countRemainingParts(totalParts, existingParts int) int32 {
 	remainingPartsToDecode := totalParts / 2
 	return int32(max(0, remainingPartsToDecode-existingParts))
-}
-
-func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) error {
-	have, err := blockProp.convertWantToHave(wants)
-	if err != nil {
-		return err
-	}
-	blockProp.sendWant(ps, wants)
-	blockProp.broadcastHaves(have, ps.peer.ID(), wants.Parts.Size())
-	return nil
 }
 
 func (blockProp *Reactor) convertWantToHave(want *proptypes.WantParts) (*proptypes.HaveParts, error) {
