@@ -502,6 +502,10 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, currentHeight, currentRound)
 	}
 
+	// the last part is never empty, and decoding rejects a zero length.
+	if cb.LastLen == 0 {
+		return errors.New("invalid last length 0")
+	}
 	if cb.LastLen > types.BlockPartSizeBytes {
 		return fmt.Errorf("invalid last length %d > %d", cb.LastLen, types.BlockPartSizeBytes)
 	}

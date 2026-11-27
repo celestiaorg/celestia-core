@@ -503,6 +503,11 @@ func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
 	cb.LastLen = types.BlockPartSizeBytes + 1
 
 	assert.Error(t, reactor1.validateCompactBlock(cb))
+
+	// the last part is never empty
+	cb.LastLen = 0
+
+	assert.ErrorContains(t, reactor1.validateCompactBlock(cb), "invalid last length 0")
 }
 
 func TestStopPeerForError(t *testing.T) {
