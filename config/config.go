@@ -303,6 +303,10 @@ type BaseConfig struct {
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
 	FilterPeers bool `mapstructure:"filter_peers"` // false
+
+	// ParallelCommitVerify verifies the signatures of large commits on several
+	// cores. Results and errors are identical to sequential verification.
+	ParallelCommitVerify bool `mapstructure:"parallel_commit_verify"`
 }
 
 // DefaultBaseConfig returns a default base configuration for a CometBFT node
@@ -322,6 +326,8 @@ func DefaultBaseConfig() BaseConfig {
 		DBBackend:          "pebbledb",
 		DBPath:             DefaultDataDir,
 		BlockstorePath:     DefaultDataDir,
+
+		ParallelCommitVerify: true,
 	}
 }
 
