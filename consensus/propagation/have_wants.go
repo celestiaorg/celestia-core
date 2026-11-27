@@ -523,7 +523,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
-	_, parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
+	_, parts, cachedRound, has, committed := blockProp.getCachedStateAndRound(height, round, wants.Prove)
 	// at a committed height, only a complete copy of the committed block beats the
 	// store: a want parked on any other entry may never be answered.
 	if has && wants.Prove && committed {
@@ -555,24 +555,27 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
+	// Skip the parts this peer was already sent MaxServesPerPart times.
+	blockHash := parts.Original().Header().Hash
+	toSend := p.UnservedParts(height, cachedRound, blockHash, canSend)
+
 	// Only keep per-peer request state for a proposal cached at exactly this
 	// height and round, which pruning bounds. Wants answered from the block
 	// store are served without it, as they may name any round. If the peer
 	// state caps refuse the counter, serve the want without it as well.
 	untrackedRemaining := int(wants.MissingPartsCount)
 	tracked := blockProp.hasCachedRound(height, round) && p.SetRemainingRequests(height, round, untrackedRemaining)
-	for _, partIndex := range canSend.GetTrueIndices() {
+	var sentParts []int
+	for _, partIndex := range toSend.GetTrueIndices() {
 		if tracked && p.GetRemainingRequests(height, round) <= 0 || !tracked && untrackedRemaining <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
-		partBz := make([]byte, len(part.Bytes))
-		copy(partBz, part.Bytes)
 		rpart := &propproto.RecoveryPart{
 			Height: height,
 			Round:  round,
 			Index:  uint32(partIndex),
-			Data:   partBz,
+			Data:   part.Bytes,
 		}
 		if wants.Prove {
 			rpart.Proof = *part.Proof.ToProto()
@@ -582,10 +585,12 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			Message:   rpart,
 		}
 
+		// The peer's send queue is full, so stop.
 		if !p.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
-			continue
+			blockProp.Logger.Debug("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
+			break
 		}
+		sentParts = append(sentParts, partIndex)
 		if tracked {
 			p.DecreaseRemainingRequests(height, round, 1)
 		} else {
@@ -594,6 +599,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
+	p.RecordServedParts(height, cachedRound, blockHash, sentParts)
 
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
