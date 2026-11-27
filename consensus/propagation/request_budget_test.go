@@ -9,6 +9,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -256,6 +257,50 @@ func TestSilentPeersLeaveEnoughBudget(t *testing.T) {
 	}
 }
 
+// TestHonestPeerServesTheRestAfterSilentPeers checks that one honest peer can
+// still give us every part we need, a share at a time, while two silent peers
+// sit on their requests.
+func TestHonestPeerServesTheRestAfterSilentPeers(t *testing.T) {
+	const (
+		height    = int64(10)
+		round     = int32(0)
+		heldCount = 10
+	)
+	receiver, parts, partSet := receiverWithCompactBlock(t, 4, height, round)
+	holdFirstParts(t, parts, partSet, heldCount)
+
+	originalCount := int(partSet.Total())
+	totalParts := int(parts.Total())
+	peers := receiver.getPeers()
+	silentPeers, honestPeer := peers[:silentPeersTolerated], peers[silentPeersTolerated]
+
+	// the silent peers are asked for parity parts and never send them.
+	for _, peer := range silentPeers {
+		wants := wantPartRange(height, round, totalParts, originalCount, totalParts)
+		_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
+		require.NoError(t, err)
+	}
+
+	// the honest peer sends every original part it is asked for. Its share
+	// gets smaller each time, so this takes a few turns.
+	for turn := 0; turn < originalCount && !parts.IsComplete(); turn++ {
+		wants := wantPartRange(height, round, totalParts, 0, originalCount)
+		_, err := receiver.sendWantsWithinBudget(honestPeer, wants, parts)
+		require.NoError(t, err)
+
+		requests, has := honestPeer.GetRequests(height, round)
+		require.True(t, has)
+		waitingOn := requests.Sub(parts.BitArray()).GetTrueIndices()
+		require.NotEmpty(t, waitingOn, "the honest peer wasn't asked for anything on turn %d", turn)
+		for _, index := range waitingOn {
+			added, err := parts.AddOriginalPart(partSet.GetPart(index))
+			require.NoError(t, err)
+			require.True(t, added)
+		}
+	}
+	require.True(t, parts.IsComplete())
+}
+
 // receiverWithCompactBlock starts nodeCount connected nodes and gives the
 // first one a compact block, without any of its parts.
 func receiverWithCompactBlock(t *testing.T, nodeCount int, height int64, round int32) (*Reactor, *proptypes.CombinedPartSet, *types.PartSet) {
@@ -283,6 +328,19 @@ func holdFirstParts(t *testing.T, parts *proptypes.CombinedPartSet, partSet *typ
 		added, err := parts.AddOriginalPart(partSet.GetPart(i))
 		require.NoError(t, err)
 		require.True(t, added)
+	}
+}
+
+// wantPartRange builds a want for the parts [from, to).
+func wantPartRange(height int64, round int32, totalParts, from, to int) *proptypes.WantParts {
+	wanted := bits.NewBitArray(totalParts)
+	for index := from; index < to; index++ {
+		wanted.SetIndex(index, true)
+	}
+	return &proptypes.WantParts{
+		Height: height,
+		Round:  round,
+		Parts:  wanted,
 	}
 }
 
