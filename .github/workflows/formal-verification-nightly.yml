@@ -1,0 +1,93 @@
+# Checks the Quint model of the compact-block propagation <-> consensus
+# hand-off (spec/consensus/propagation) nightly, and replays traces of the
+# model against the real reactor so the model and the code cannot drift apart
+# unnoticed. See spec/consensus/propagation/README.md.
+#
+#   model:  typecheck, scenario tests, random simulation, exhaustive TLC runs
+#           of the safety invariants, the gate (the PROTOCO-3430 fix reverted
+#           in the model must give violations) and the liveness property.
+#   replay: fresh random traces of the model, and the committed traces,
+#           replayed through consensus/propagation's TestMBT* tests.
+#
+# Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
+# which watches this workflow by name. A counterexample can describe an
+# exploitable bug, and this repository's logs are public. As in
+# fuzz-nightly.yml, each job prints only PASS or FAIL, and on main files a
+# Linear issue holding the output. Reproduce locally with:
+#   make -C spec/consensus/propagation <target>
+name: Formal Verification
+on:
+  workflow_dispatch:  # allow running workflow manually
+  schedule:
+    - cron: '41 4 * * *'
+  pull_request:
+    paths:
+      - "spec/consensus/propagation/**"
+      - "consensus/propagation/**"
+      - ".github/workflows/formal-verification-nightly.yml"
+
+permissions:
+  contents: read
+
+# Cancel superseded runs when a pull request gets a new push. Other events get
+# a unique group so GitHub never queues or drops their pending runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  formal-verification:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: model, make: all}
+          - {target: replay, make: replay}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: "go.mod"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # The version must match QUINT_VERSION in the spec's Makefile, which
+      # `make deps` checks.
+      - name: Install quint
+        run: npm install --global @informalsystems/quint@0.34.0
+      # The output stays in a file under runner.temp and is sent only to Linear.
+      - name: Run make ${{ matrix.make }}
+        env:
+          TARGET: ${{ matrix.target }}
+          MAKE_TARGET: ${{ matrix.make }}
+          LOG_DIR: ${{ runner.temp }}/formal-verification
+        run: |
+          # Apalache and TLC need Java 21, which the runner image ships
+          # beside its default JDK.
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          mkdir -p "$LOG_DIR"
+          if make -C spec/consensus/propagation "$MAKE_TARGET" >"$LOG_DIR/$TARGET.log" 2>&1; then
+            echo "PASS $TARGET"
+          else
+            echo "FAIL $TARGET (output withheld; see the Linear issue)"
+            echo "2 . $TARGET" >"$LOG_DIR/failed.txt"
+            exit 1
+          fi
+
+      - name: File Linear issue for failing target
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          LOG_DIR: ${{ runner.temp }}/formal-verification
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          TITLE_PREFIX: Nightly celestia-core formal verification failure
+          KIND: formal verification target
+          REPRODUCE: Reproduce with `make -C spec/consensus/propagation all` (target model) or `make -C spec/consensus/propagation replay` (target replay).
+        run: python3 .github/scripts/report-fuzz-failures.py

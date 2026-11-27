@@ -66,6 +66,10 @@ type fuzzFixtures struct {
 	store    *store.BlockStore
 	stored   *cmttypes.PartSet
 	blocks   []*fuzzBlock
+	// extra holds fixtures the fuzz ops never select (the fuzzer picks from
+	// blocks by index modulo its length, so blocks must not grow). The
+	// model-based replay adds its own here so that fixtureFor finds them.
+	extra []*fuzzBlock
 }
 
 var (
@@ -94,8 +98,6 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 			otherPub: ed25519.GenPrivKeyFromSecret([]byte("propagation-fuzz-other")).PubKey(),
 			store:    store.NewBlockStore(dbm.NewMemDB()),
 		}
-		ts := time.Unix(1_700_000_000, 0).UTC()
-
 		stored := cmttypes.MakeBlock(fuzzStoredHeight, cmttypes.Data{Txs: deterministicTxs(4, 80_000)}, &cmttypes.Commit{Height: fuzzStoredHeight - 1}, nil)
 		stored.ProposerAddress = fx.pub.Address()
 		storedParts, err := stored.MakePartSet(cmttypes.BlockPartSizeBytes)
@@ -103,43 +105,46 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 		fx.store.SaveBlock(stored, storedParts, &cmttypes.Commit{Height: fuzzStoredHeight})
 		fx.stored = storedParts
 
-		makeBlock := func(height int64, round int32, txs cmttypes.Txs) *fuzzBlock {
-			block := cmttypes.MakeBlock(height, cmttypes.Data{Txs: txs}, nil, nil)
-			ps, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
-			require.NoError(tb, err)
-			parity, lastLen, err := cmttypes.Encode(ps, cmttypes.BlockPartSizeBytes)
-			require.NoError(tb, err)
-			blobs := make([]proptypes.TxMetaData, len(ps.TxPos))
-			for i, pos := range ps.TxPos {
-				blobs[i] = proptypes.TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()}
-			}
-			cb := &proptypes.CompactBlock{
-				Proposal: cmttypes.Proposal{
-					Type: cmtproto.ProposalType, Height: height, Round: round, POLRound: -1, Timestamp: ts,
-					BlockID: cmttypes.BlockID{Hash: tmhash.Sum(ps.Hash()), PartSetHeader: ps.Header()},
-				},
-				LastLen:     uint32(lastLen),
-				BpHash:      parity.Hash(),
-				Blobs:       blobs,
-				PartsHashes: extractHashes(ps, parity),
-			}
-			fx.sign(tb, cb, true)
-			keys := make([]cmttypes.TxKey, len(txs))
-			for i, tx := range txs {
-				keys[i] = tx.Key()
-			}
-			return &fuzzBlock{cb: cb, original: ps, parity: parity, txs: txs, keys: keys}
-		}
 		a := deterministicTxs(5, 30_000, 50_000, 70_000, 40_000, 60_000)
 		fx.blocks = []*fuzzBlock{
-			makeBlock(5, 0, a), // four parts
-			makeBlock(5, 0, deterministicTxs(6, 20_000, 90_000)), // conflicting proposal, two parts
-			makeBlock(5, 1, a),
-			makeBlock(6, 0, deterministicTxs(7, 100, 200, 300)), // one part
+			fx.makeBlock(tb, 5, 0, a),                                   // four parts
+			fx.makeBlock(tb, 5, 0, deterministicTxs(6, 20_000, 90_000)), // conflicting proposal, two parts
+			fx.makeBlock(tb, 5, 1, a),
+			fx.makeBlock(tb, 6, 0, deterministicTxs(7, 100, 200, 300)), // one part
 		}
 		fuzzFixturesVal = fx
 	})
 	return fuzzFixturesVal
+}
+
+// makeBlock builds a block of txs at height and round, its parity and the
+// compact block the proposer signs for it.
+func (fx *fuzzFixtures) makeBlock(tb testing.TB, height int64, round int32, txs cmttypes.Txs) *fuzzBlock {
+	block := cmttypes.MakeBlock(height, cmttypes.Data{Txs: txs}, nil, nil)
+	ps, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
+	require.NoError(tb, err)
+	parity, lastLen, err := cmttypes.Encode(ps, cmttypes.BlockPartSizeBytes)
+	require.NoError(tb, err)
+	blobs := make([]proptypes.TxMetaData, len(ps.TxPos))
+	for i, pos := range ps.TxPos {
+		blobs[i] = proptypes.TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()}
+	}
+	cb := &proptypes.CompactBlock{
+		Proposal: cmttypes.Proposal{
+			Type: cmtproto.ProposalType, Height: height, Round: round, POLRound: -1, Timestamp: time.Unix(1_700_000_000, 0).UTC(),
+			BlockID: cmttypes.BlockID{Hash: tmhash.Sum(ps.Hash()), PartSetHeader: ps.Header()},
+		},
+		LastLen:     uint32(lastLen),
+		BpHash:      parity.Hash(),
+		Blobs:       blobs,
+		PartsHashes: extractHashes(ps, parity),
+	}
+	fx.sign(tb, cb, true)
+	keys := make([]cmttypes.TxKey, len(txs))
+	for i, tx := range txs {
+		keys[i] = tx.Key()
+	}
+	return &fuzzBlock{cb: cb, original: ps, parity: parity, txs: txs, keys: keys}
 }
 
 // sign signs the compact block (and optionally its proposal) with the
@@ -162,11 +167,16 @@ func (fx *fuzzFixtures) sign(tb testing.TB, cb *proptypes.CompactBlock, proposal
 type fuzzPeer struct {
 	*mock.Peer
 	check func(*propproto.RecoveryPart)
+	// observe, if set, sees every envelope sent to the peer.
+	observe func(p2p.Envelope)
 }
 
 func (p *fuzzPeer) TrySend(e p2p.Envelope) bool { return p.Send(e) }
 
 func (p *fuzzPeer) Send(e p2p.Envelope) bool {
+	if p.observe != nil {
+		p.observe(e)
+	}
 	if rp, ok := e.Message.(*propproto.RecoveryPart); ok {
 		p.check(rp)
 	}
@@ -257,7 +267,25 @@ type reactorFuzzer struct {
 	badSends []string
 }
 
+// fuzzerOptions adapts the fuzzer's reactor for other drivers. The zero value
+// is what the fuzz target uses.
+type fuzzerOptions struct {
+	// noDrain leaves proposalChan and partChan to the caller instead of
+	// draining them on a goroutine.
+	noDrain bool
+	// chanCap, if positive, is the capacity of proposalChan and partChan.
+	chanCap int
+	// mempool is added to the mempool the input's mask selects.
+	mempool cmttypes.Txs
+	// observe, if set, sees every envelope the reactor sends to a peer.
+	observe func(peer *fuzzPeer, e p2p.Envelope)
+}
+
 func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFuzzer {
+	return newReactorFuzzerWith(t, fx, rd, fuzzerOptions{})
+}
+
+func newReactorFuzzerWith(t *testing.T, fx *fuzzFixtures, rd *fuzzReader, opts fuzzerOptions) *reactorFuzzer {
 	f := &reactorFuzzer{t: t, fx: fx}
 	for _, b := range fx.blocks {
 		f.addSigned(b.cb.Proposal.Height, b.original.Header())
@@ -290,11 +318,19 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 			n++
 		}
 	}
+	for _, tx := range opts.mempool {
+		mp.txs[tx.Key()] = &cmttypes.CachedTx{Tx: tx}
+	}
 
 	r := NewReactor(nodeKey.ID(), Config{
 		Store: fx.store, Mempool: mp, Privval: fx.pv, ChainID: TestChainID, BlockMaxBytes: int64(cmttypes.MaxBlockSizeBytes),
 	})
 	r.ticker.Stop() // catchup retries are driven explicitly by the fuzzer
+	if opts.chanCap > 0 {
+		// no goroutine uses the channels before Start
+		r.proposalChan = make(chan ProposalAndSrc, opts.chanCap)
+		r.partChan = make(chan cmttypes.PartInfo, opts.chanCap)
+	}
 	r.SetLogger(log.NewNopLogger())
 	sw.AddReactor("BlockProp", r)
 	require.NoError(t, r.Start())
@@ -306,6 +342,9 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)
+		if opts.noDrain {
+			return
+		}
 		for {
 			select {
 			case <-r.ctx.Done():
@@ -326,6 +365,9 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 
 	for i, n := 0, 1+int(rd.byte()%3); i < n; i++ {
 		peer := &fuzzPeer{Peer: mock.NewPeer(nil), check: f.checkSent}
+		if opts.observe != nil {
+			peer.observe = func(e p2p.Envelope) { opts.observe(peer, e) }
+		}
 		editor := &fuzzPeerStateEditor{height: fuzzStoredHeight + int64(rd.byte()%4)}
 		peer.Set(cmttypes.PeerStateKey, editor)
 		r.AddPeer(peer)
@@ -563,7 +605,7 @@ func (f *reactorFuzzer) target(rd *fuzzReader, blk *fuzzBlock) (int64, int32) {
 	return h, r
 }
 
-func cloneCompactBlock(t *testing.T, cb *proptypes.CompactBlock) *proptypes.CompactBlock {
+func cloneCompactBlock(t testing.TB, cb *proptypes.CompactBlock) *proptypes.CompactBlock {
 	raw, err := proto.Marshal(cb.ToProto())
 	require.NoError(t, err)
 	var pb propproto.CompactBlock
@@ -576,6 +618,11 @@ func cloneCompactBlock(t *testing.T, cb *proptypes.CompactBlock) *proptypes.Comp
 // fixtureFor returns the fixture whose original part set header is psh.
 func (f *reactorFuzzer) fixtureFor(psh cmttypes.PartSetHeader) *fuzzBlock {
 	for _, b := range f.fx.blocks {
+		if b.original.Header().Equals(psh) {
+			return b
+		}
+	}
+	for _, b := range f.fx.extra {
 		if b.original.Header().Equals(psh) {
 			return b
 		}
