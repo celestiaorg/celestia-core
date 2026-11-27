@@ -194,7 +194,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 		return nil, nil, nil, false
 	}
 
-	cachedProp := p.cachedLocked(height, round)
+	cachedProp, _ := p.cachedLocked(height, round)
 
 	var hasStored *types.BlockMeta
 	if height < p.height || (catchup && height <= p.store.Height()) {
@@ -222,25 +222,34 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 // round. Unlike getAllState, it never reads the block store. committed reports whether
 // the height is committed: below the working height, or, for catchup, in the store.
 func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, has bool, committed bool) {
+	cb, parts, _, has, committed = p.getCachedStateAndRound(height, round, catchup)
+	return cb, parts, has, committed
+}
+
+// getCachedStateAndRound is getCachedState that also returns the round the
+// entry is cached at.
+func (p *ProposalCache) getCachedStateAndRound(height int64, round int32, catchup bool) (cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, cachedRound int32, has bool, committed bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
 	committed = height < p.height || (catchup && height <= p.store.Height())
 	if !catchup && !p.relevant(height, round) {
-		return nil, nil, false, committed
+		return nil, nil, 0, false, committed
 	}
-	if cachedProp := p.cachedLocked(height, round); cachedProp != nil {
-		return cachedProp.compactBlock, cachedProp.block, true, committed
+	cachedProp, cachedRound := p.cachedLocked(height, round)
+	if cachedProp == nil {
+		return nil, nil, 0, false, committed
 	}
-	return nil, nil, false, committed
+	return cachedProp.compactBlock, cachedProp.block, cachedRound, true, committed
 }
 
-// cachedLocked returns the cached proposal for a height and round, or nil. A
-// round below -1 selects the latest cached round. The caller must hold pmtx.
-func (p *ProposalCache) cachedLocked(height int64, round int32) *proposalData {
+// cachedLocked returns the cached proposal for a height the round it
+// is cached at, or nil. A round below -1 selects the latest cached
+// round. The caller must hold pmtx.
+func (p *ProposalCache) cachedLocked(height int64, round int32) (*proposalData, int32) {
 	cachedProps := p.proposals[height]
 	if len(cachedProps) == 0 {
-		return nil
+		return nil, 0
 	}
 	if round < -1 {
 		var latestRound int32
@@ -251,7 +260,7 @@ func (p *ProposalCache) cachedLocked(height int64, round int32) *proposalData {
 		}
 		round = latestRound
 	}
-	return cachedProps[round]
+	return cachedProps[round], round
 }
 
 // GetCurrentProposal returns the current proposal and block for the current
