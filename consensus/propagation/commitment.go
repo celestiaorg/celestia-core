@@ -19,8 +19,43 @@ import (
 var _ Propagator = (*Reactor)(nil)
 
 const (
+	// CompactBlockUID is the unique ID for signatures over the full compact
+	// block sign bytes, used before app version 12.
 	CompactBlockUID = "compactBlock"
+	// CompactBlockDigestUID is the unique ID for signatures over the compact
+	// block digest, used from app version 12. A separate ID keeps a signature
+	// in one format from being valid in the other.
+	CompactBlockDigestUID = "compactBlockDigest"
 )
+
+// compactBlockDigestAppVersion is the first app version at which the compact
+// block signature covers the digest instead of the full sign bytes. It is
+// gated so every node switches format at the same height.
+const compactBlockDigestAppVersion uint64 = 12
+
+// compactBlockSignPayload is what gets signed for a compact block.
+type compactBlockSignPayload struct {
+	uniqueID  string
+	signBytes []byte
+}
+
+// newCompactBlockSignPayload returns the unique ID and sign bytes for the
+// signature format that applies at appVersion.
+func newCompactBlockSignPayload(cb *proptypes.CompactBlock, appVersion uint64) (compactBlockSignPayload, error) {
+	if appVersion >= compactBlockDigestAppVersion {
+		signBytes, err := cb.DigestSignBytes()
+		if err != nil {
+			return compactBlockSignPayload{}, err
+		}
+		return compactBlockSignPayload{uniqueID: CompactBlockDigestUID, signBytes: signBytes}, nil
+	}
+
+	signBytes, err := cb.SignBytes()
+	if err != nil {
+		return compactBlockSignPayload{}, err
+	}
+	return compactBlockSignPayload{uniqueID: CompactBlockUID, signBytes: signBytes}, nil
+}
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
@@ -45,22 +80,25 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.SetProofCache(proofs)
 
-	sbz, err := cb.SignBytes()
+	blockProp.pmtx.Lock()
+	appVersion := blockProp.appVersion
+	blockProp.pmtx.Unlock()
+
+	signPayload, err := newCompactBlockSignPayload(&cb, appVersion)
 	if err != nil {
 		blockProp.Logger.Error("failed to create signature for compact block", "err", err)
 		return err
 	}
 
-	// sign the hash of the compact block NOTE: p2p message sign bytes are
-	// prepended with the chain id and UID
-	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
+	// NOTE: p2p message sign bytes are prepended with the chain id and UID
+	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, signPayload.uniqueID, signPayload.signBytes)
 	if err != nil {
 		blockProp.Logger.Error("failed to sign compact block - this may indicate an incompatible KMS version that does not support compact block signing",
 			"err", err,
 			"height", proposal.Height,
 			"round", proposal.Round,
 			"chain_id", blockProp.chainID,
-			"unique_id", CompactBlockUID,
+			"unique_id", signPayload.uniqueID,
 		)
 		return err
 	}
@@ -485,14 +523,19 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 }
 
 // validateCompactBlock stateful validation of the compact block.
+//
+// It does not check PartsHashes, and from app version 12 the signature does
+// not cover them. Callers must also call cb.Proofs() to check them against
+// the signed roots.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	// read the proposer, height, and round under a single lock so validation
-	// never observes a partially updated consensus state.
+	// read the proposer, height, round, and app version under a single lock so
+	// validation never observes a partially updated consensus state.
 	blockProp.pmtx.Lock()
 	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
 	maxBytes := blockProp.blockMaxBytes
+	appVersion := blockProp.appVersion
 	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
@@ -532,13 +575,13 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return fmt.Errorf("proposal block has too many parts: %d > %d", cb.Proposal.BlockID.PartSetHeader.Total, maxBlockPartsCount)
 	}
 
-	// validate the compact block
-	cbz, err := cb.SignBytes()
+	// validate the compact block signature
+	signPayload, err := newCompactBlockSignPayload(cb, appVersion)
 	if err != nil {
 		return err
 	}
 
-	p2pBz, err := types.RawBytesMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+	p2pBz, err := types.RawBytesMessageSignBytes(blockProp.chainID, signPayload.uniqueID, signPayload.signBytes)
 	if err != nil {
 		return err
 	}

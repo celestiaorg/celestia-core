@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
@@ -62,7 +63,9 @@ func (t *TxMetaData) ValidateBasic() error {
 // CompactBlock contains commitments and metadata for reusing transactions that
 // have already been distributed.
 type CompactBlock struct {
-	// BpHash is the block propagation hash. It's the root of the mekle tree where the leaves are the concatenation of the original partset elements and the parity one.
+	// BpHash is the block propagation hash. It's the merkle root of the parity
+	// part set. The original parts are committed to by the PartSetHeader hash
+	// in the proposal.
 	BpHash    []byte         `json:"bp_hash,omitempty"`
 	Blobs     []TxMetaData   `json:"blobs,omitempty"`
 	Signature []byte         `json:"signature,omitempty"`
@@ -98,6 +101,63 @@ func (c *CompactBlock) SignBytes() ([]byte, error) {
 		return nil, err
 	}
 	return signBytes, nil
+}
+
+// DigestSignBytes returns the fixed-size sign bytes used from app version 12:
+// the proposal, BpHash and last part length, followed by a hash of the tx
+// metadata. PartsHashes are left out because the PartSetHeader hash and the
+// BpHash already commit to them.
+func (c *CompactBlock) DigestSignBytes() ([]byte, error) {
+	txMetaDataHash, err := hashTxMetaData(c.Blobs)
+	if err != nil {
+		return nil, err
+	}
+
+	protoCompactBlock := &protoprop.CompactBlock{
+		BpHash:     c.BpHash,
+		Proposal:   c.Proposal.ToProto(),
+		LastLength: c.LastLen,
+	}
+	signBytes, err := protoio.MarshalDelimited(protoCompactBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	signBytes = append(signBytes, txMetaDataHash...)
+	return signBytes, nil
+}
+
+// hashTxMetaData returns one hash covering every tx metadata entry (tx hash,
+// start and end), so changing any entry changes the hash.
+//
+// Each entry is hashed as its length-prefixed protobuf encoding, the same
+// bytes protoio.MarshalDelimited produces. One proto value and one buffer are
+// reused for every entry so hashing does not allocate per tx.
+func hashTxMetaData(txMetaData []TxMetaData) ([]byte, error) {
+	hasher := tmhash.New()
+	var protoEntry protoprop.TxMetaData
+	var buffer []byte
+
+	for i := range txMetaData {
+		protoEntry.Hash = txMetaData[i].Hash
+		protoEntry.Start = txMetaData[i].Start
+		protoEntry.End = txMetaData[i].End
+
+		entrySize := protoEntry.Size()
+		maxEncodedSize := binary.MaxVarintLen64 + entrySize
+		if cap(buffer) < maxEncodedSize {
+			buffer = make([]byte, maxEncodedSize)
+		}
+		buffer = buffer[:maxEncodedSize]
+
+		prefixSize := binary.PutUvarint(buffer, uint64(entrySize))
+		encodedSize := prefixSize + entrySize
+		if _, err := protoEntry.MarshalToSizedBuffer(buffer[prefixSize:encodedSize]); err != nil {
+			return nil, err
+		}
+		hasher.Write(buffer[:encodedSize])
+	}
+	return hasher.Sum(nil), nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is

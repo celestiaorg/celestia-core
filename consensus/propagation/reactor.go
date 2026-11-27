@@ -68,6 +68,10 @@ type Reactor struct {
 	// blockMaxBytes is the Block.MaxBytes consensus param for the height
 	// consensus is on. It is guarded by the ProposalCache's pmtx.
 	blockMaxBytes int64
+	// appVersion is the app version for the height consensus is on. It decides
+	// which compact block signature format is used. It is guarded by the
+	// ProposalCache's pmtx.
+	appVersion uint64
 
 	// storedPartsBudget limits how many block parts this node loads from the
 	// block store per second to serve catchup wants, across all peers.
@@ -396,6 +400,15 @@ func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer 
 func (blockProp *Reactor) SetBlockMaxBytes(maxBytes int64) {
 	blockProp.pmtx.Lock()
 	blockProp.blockMaxBytes = maxBytes
+	blockProp.pmtx.Unlock()
+}
+
+// SetAppVersion installs the app version that applies to the height consensus
+// is entering, so every node switches compact block signature format at the
+// same height.
+func (blockProp *Reactor) SetAppVersion(appVersion uint64) {
+	blockProp.pmtx.Lock()
+	blockProp.appVersion = appVersion
 	blockProp.pmtx.Unlock()
 }
 
