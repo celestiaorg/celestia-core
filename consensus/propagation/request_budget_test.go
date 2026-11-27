@@ -9,7 +9,6 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
-	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -127,7 +126,7 @@ func TestSendWantsWithinBudget(t *testing.T) {
 		wg.Add(1)
 		go func(peer *PeerState) {
 			defer wg.Done()
-			wants := wantAllParts(height, round, totalParts, missing)
+			wants := wantAllParts(height, round, partSet.Total(), false)
 			_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
 			require.NoError(t, err)
 		}(peer)
@@ -154,7 +153,7 @@ func TestSendWantsSkipsHeldParts(t *testing.T) {
 
 	// the wants are picked while the receiver has no parts.
 	totalParts := int(parts.Total())
-	wants := wantAllParts(height, round, totalParts, int(partSet.Total()))
+	wants := wantAllParts(height, round, partSet.Total(), false)
 
 	// then the receiver gets the first parts some other way.
 	holdFirstParts(t, parts, partSet, heldCount)
@@ -232,19 +231,18 @@ func TestSilentPeersLeaveEnoughBudget(t *testing.T) {
 			holdFirstParts(t, parts, partSet, tc.heldCount)
 
 			missing := int(partSet.Total()) - tc.heldCount
-			totalParts := int(parts.Total())
 			peers := receiver.getPeers()
 			silentPeers, honestPeers := peers[:silentPeersTolerated], peers[silentPeersTolerated:]
 
 			// the silent peers are asked first. They never send a part, so
 			// their requests stay open.
 			for _, peer := range silentPeers {
-				wants := wantAllParts(height, round, totalParts, missing)
+				wants := wantAllParts(height, round, partSet.Total(), false)
 				_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
 				require.NoError(t, err)
 			}
 			for _, peer := range honestPeers {
-				wants := wantAllParts(height, round, totalParts, missing)
+				wants := wantAllParts(height, round, partSet.Total(), false)
 				_, err := receiver.sendWantsWithinBudget(peer, wants, parts)
 				require.NoError(t, err)
 			}
@@ -285,18 +283,6 @@ func holdFirstParts(t *testing.T, parts *proptypes.CombinedPartSet, partSet *typ
 		added, err := parts.AddOriginalPart(partSet.GetPart(i))
 		require.NoError(t, err)
 		require.True(t, added)
-	}
-}
-
-// wantAllParts builds a want for every part of the block.
-func wantAllParts(height int64, round int32, totalParts, missing int) *proptypes.WantParts {
-	allParts := bits.NewBitArray(totalParts)
-	allParts.Fill()
-	return &proptypes.WantParts{
-		Height:            height,
-		Round:             round,
-		Parts:             allParts,
-		MissingPartsCount: int32(missing),
 	}
 }
 
