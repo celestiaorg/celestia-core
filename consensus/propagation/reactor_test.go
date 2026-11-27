@@ -796,3 +796,17 @@ func TestPeerStateEditor(t *testing.T) {
 	assert.Equal(t, int32(1), editor.blockParts[0].Round)
 	assert.Equal(t, 0, editor.blockParts[0].Index)
 }
+
+// Only the data channel carries block parts, so only its send queue is limited
+// by bytes.
+func TestDataChannelSendQueueHasByteLimit(t *testing.T) {
+	reactor := &Reactor{}
+	byteLimits := make(map[byte]int)
+	for _, channel := range reactor.GetChannels() {
+		byteLimits[channel.ID] = channel.SendQueueCapacityBytes
+	}
+
+	require.Equal(t, DataChannelSendQueueBytes, byteLimits[DataChannel])
+	require.Zero(t, byteLimits[WantChannel])
+	require.GreaterOrEqual(t, DataChannelSendQueueBytes, maxMsgSize, "the queue must hold at least one message of the largest size")
+}

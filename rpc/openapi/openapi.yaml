@@ -1496,6 +1496,12 @@ components:
         SendQueueSize:
           type: string
           example: "0"
+        SendQueueCapacityBytes:
+          type: string
+          example: "0"
+        SendQueueBytes:
+          type: string
+          example: "0"
         Priority:
           type: string
           example: "5"
