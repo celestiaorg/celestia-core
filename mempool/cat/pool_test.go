@@ -84,8 +84,12 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 		Address:   []byte(sender),
 		Code:      abci.CodeTypeOK,
 		GasWanted: 1,
+		Usage:     testTxUsage,
 	}, nil
 }
+
+// testTxUsage is the usage the test application reports for every valid tx.
+var testTxUsage = abci.TxUsage{SdkGas: 1, SdkMessages: 1}
 
 func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 	t.Helper()
