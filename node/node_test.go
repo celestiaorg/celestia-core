@@ -37,6 +37,7 @@ import (
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
+	"github.com/cometbft/cometbft/version"
 )
 
 func TestNodeStartStop(t *testing.T) {
@@ -140,6 +141,14 @@ func TestNodeSetAppVersion(t *testing.T) {
 
 	// check version is set in node info
 	assert.Equal(t, n.nodeInfo.(p2p.DefaultNodeInfo).ProtocolVersion.App, appVersion)
+}
+
+func TestNodeSoftwareVersion(t *testing.T) {
+	for _, appVersion := range []string{"", "dev", "10", "10.6.0\n"} {
+		assert.Equal(t, version.TMCoreSemVer, nodeSoftwareVersion(appVersion))
+	}
+	assert.Equal(t, version.TMCoreSemVer+"-celestia-app.10.6.0", nodeSoftwareVersion("v10.6.0"))
+	assert.Equal(t, version.TMCoreSemVer+"-celestia-app.10.6.0-mocha+abc", nodeSoftwareVersion("10.6.0-mocha+abc"))
 }
 
 func TestNodeInfoAdvertisesAllReactorChannels(t *testing.T) {
