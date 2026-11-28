@@ -1479,9 +1479,6 @@ type StorageConfig struct {
 	// PebbleCacheSizeMB is the shared pebble block cache in MiB; 0 sizes it
 	// from the machine's memory.
 	PebbleCacheSizeMB int `mapstructure:"pebble_cache_size_mb"`
-	// PebbleMaxCompactions is the number of concurrent compactions per DB; 0
-	// sizes it from the CPU count.
-	PebbleMaxCompactions int `mapstructure:"pebble_max_compactions"`
 	// PebbleMemoryReserveMB is the memory automatic sizing leaves for the app,
 	// the node's heap and the OS.
 	PebbleMemoryReserveMB int `mapstructure:"pebble_memory_reserve_mb"`
@@ -1490,7 +1487,6 @@ type StorageConfig struct {
 // Bounds of the pebble settings.
 const (
 	maxPebbleCacheSizeMB   = 1 << 20 // 1 TiB
-	maxPebbleCompactions   = 64
 	maxPebbleReserveMB     = 1 << 20
 	defaultPebbleReserveMB = 20 << 10
 )
@@ -1534,9 +1530,6 @@ func (cfg *StorageConfig) ValidateBasic() error {
 	}
 	if cfg.PebbleCacheSizeMB < 0 || cfg.PebbleCacheSizeMB > maxPebbleCacheSizeMB {
 		return fmt.Errorf("pebble_cache_size_mb must be between 0 (auto) and %d, got %d", maxPebbleCacheSizeMB, cfg.PebbleCacheSizeMB)
-	}
-	if cfg.PebbleMaxCompactions < 0 || cfg.PebbleMaxCompactions > maxPebbleCompactions {
-		return fmt.Errorf("pebble_max_compactions must be between 0 (auto) and %d, got %d", maxPebbleCompactions, cfg.PebbleMaxCompactions)
 	}
 	if cfg.PebbleMemoryReserveMB < 0 || cfg.PebbleMemoryReserveMB > maxPebbleReserveMB {
 		return fmt.Errorf("pebble_memory_reserve_mb must be between 0 and %d, got %d", maxPebbleReserveMB, cfg.PebbleMemoryReserveMB)
