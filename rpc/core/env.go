@@ -72,8 +72,9 @@ type consensusReactor interface {
 // to be setup once during startup.
 type Environment struct {
 	// external, thread safe interfaces
-	ProxyAppQuery   proxy.AppConnQuery
-	ProxyAppMempool proxy.AppConnMempool
+	ProxyAppQuery    proxy.AppConnQuery
+	ProxyAppSnapshot proxy.AppConnSnapshot
+	ProxyAppMempool  proxy.AppConnMempool
 
 	// interfaces defined in types and above
 	StateStore       sm.Store

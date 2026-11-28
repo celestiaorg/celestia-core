@@ -871,8 +871,9 @@ func (n *Node) ConfigureRPC() (*rpccore.Environment, error) {
 		return nil, fmt.Errorf("can't get pubkey: %w", err)
 	}
 	rpcCoreEnv := rpccore.Environment{
-		ProxyAppQuery:   n.proxyApp.Query(),
-		ProxyAppMempool: n.proxyApp.Mempool(),
+		ProxyAppQuery:    n.proxyApp.Query(),
+		ProxyAppSnapshot: n.proxyApp.Snapshot(),
+		ProxyAppMempool:  n.proxyApp.Mempool(),
 
 		StateStore:     n.stateStore,
 		BlockStore:     n.blockStore,

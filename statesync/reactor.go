@@ -337,7 +337,16 @@ func (r *Reactor) Sync(stateProvider StateProvider, discoveryTime time.Duration)
 	})
 	r.mtx.Unlock()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rpcPeers := make([]*rpcSnapshotPeer, 0, len(r.cfg.RPCServers))
+	for i, server := range r.cfg.RPCServers {
+		rpcPeers = append(rpcPeers, newRPCSnapshotPeer(ctx, i, server, r.syncer, r.cfg))
+	}
 	hook := func() {
+		for _, peer := range rpcPeers {
+			peer.discover()
+		}
 		r.Logger.Trace("Requesting snapshots from known peers")
 		// Request snapshots from all currently connected peers
 

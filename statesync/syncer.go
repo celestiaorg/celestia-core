@@ -118,7 +118,7 @@ func (s *syncer) AddChunk(chunk *chunk) (bool, error) {
 
 // AddSnapshot adds a snapshot to the snapshot pool. It returns true if a new, previously unseen
 // snapshot was accepted and added.
-func (s *syncer) AddSnapshot(peer p2p.Peer, snapshot *snapshot) (bool, error) {
+func (s *syncer) AddSnapshot(peer snapshotPeer, snapshot *snapshot) (bool, error) {
 	added, err := s.snapshots.Add(peer, snapshot)
 	if err != nil {
 		return false, err
