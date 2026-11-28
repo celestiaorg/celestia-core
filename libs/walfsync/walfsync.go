@@ -22,6 +22,10 @@
 // store). A Controller records that risk in a marker file that holds the boot
 // ID, and CheckMarker refuses to start after an OS crash until the operator
 // picks a recovery path.
+//
+// The flag is process-wide: run one node per process. An application in the
+// same process (the native app of a multiplexer build) that wraps its own
+// databases shares the flag and the Barrier on purpose.
 package walfsync
 
 import (
@@ -43,21 +47,21 @@ var open = struct {
 	files map[*walFile]struct{}
 }{files: make(map[*walFile]struct{})}
 
-// syncOnClose is only turned off by tests, to show the hole it prevents.
-var syncOnClose = true
+// Test hooks. testSkipCloseSync shows the hole the Close fsync prevents;
+// testCloseHook runs in Close after it takes the file lock.
+var (
+	testSkipCloseSync bool
+	testCloseHook     func()
+)
 
-// Skipping reports whether WAL syncs are skipped right now.
-func Skipping() bool { return catchingUp.Load() > 0 }
+// skipping reports whether WAL syncs are skipped right now.
+func skipping() bool { return catchingUp.Load() > 0 }
 
 // begin and end move the process-wide flag. Callers outside tests use a
 // Controller, which writes the crash marker first.
 func begin() { catchingUp.Add(1) }
 
-func end() {
-	if catchingUp.Add(-1) < 0 {
-		catchingUp.Store(0)
-	}
-}
+func end() { catchingUp.Add(-1) }
 
 // IsWAL reports whether a pebble file name is a write-ahead log.
 func IsWAL(name string) bool { return strings.HasSuffix(name, ".log") }
@@ -94,8 +98,9 @@ func track(name string, f vfs.File, err error) (vfs.File, error) {
 	return w, nil
 }
 
-// walFile is a WAL file. mu serializes real syncs, Close and the dirty flag,
-// so Barrier never returns while a Close-time fsync is still running.
+// walFile is a WAL file. mu serializes real syncs, Close and the dirty flag.
+// Close keeps the file in the open set until it has fsynced and closed it, so
+// a Barrier that sees the file waits on mu for that fsync.
 type walFile struct {
 	vfs.File
 	mu     sync.Mutex
@@ -110,7 +115,7 @@ func (f *walFile) SyncData() error { return f.sync(f.File.SyncData) }
 func (f *walFile) SyncTo(length int64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if Skipping() {
+	if skipping() {
 		f.dirty = true
 		return true, nil
 	}
@@ -124,7 +129,7 @@ func (f *walFile) SyncTo(length int64) (bool, error) {
 func (f *walFile) sync(fn func() error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if Skipping() {
+	if skipping() {
 		f.dirty = true
 		return nil
 	}
@@ -138,23 +143,27 @@ func (f *walFile) sync(fn func() error) error {
 // Close fsyncs the file if a sync was skipped, whatever the flag says now, and
 // then closes it.
 func (f *walFile) Close() error {
-	open.Lock()
-	delete(open.files, f)
-	open.Unlock()
-
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.closed = true
+	if testCloseHook != nil {
+		testCloseHook()
+	}
 	var err error
-	if f.dirty && syncOnClose {
+	if f.dirty && !testSkipCloseSync {
 		err = f.File.Sync()
 		f.dirty = false
 	}
-	return errors.Join(err, f.File.Close())
+	f.closed = true
+	err = errors.Join(err, f.File.Close())
+	f.mu.Unlock()
+
+	open.Lock()
+	delete(open.files, f)
+	open.Unlock()
+	return err
 }
 
 // syncNow fsyncs an open file. A file closed in the meantime was synced by
-// Close, which holds mu until it is done.
+// Close before it released mu.
 func (f *walFile) syncNow() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

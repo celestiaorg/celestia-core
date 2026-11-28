@@ -20,16 +20,19 @@ const (
 
 	// MarkerFile is the name of the crash marker in the data directory. It
 	// exists while WAL fsyncs may be skipped and holds the boot ID.
-	MarkerFile = "wal_fsync_skipped"
+	MarkerFile = "db_wal_fsync_skipped"
+
+	// AcceptFlag is the one-shot start flag that accepts an unsynced crash.
+	AcceptFlag = "accept_unsynced_db_crash"
 )
 
-// ValidateMode checks a wal_fsync setting. The empty string means the default.
+// ValidateMode checks a db_wal_fsync setting. The empty string means the default.
 func ValidateMode(mode string) error {
 	switch mode {
 	case "", ModeCatchup, ModeAlways:
 		return nil
 	}
-	return fmt.Errorf("wal_fsync must be %q or %q, got %q", ModeCatchup, ModeAlways, mode)
+	return fmt.Errorf("db_wal_fsync must be %q or %q, got %q", ModeCatchup, ModeAlways, mode)
 }
 
 // ErrUnsyncedCrash is returned by CheckMarker when the operating system went
@@ -110,27 +113,18 @@ func (c *Controller) FinishCatchup() error {
 	return removeMarker(c.marker)
 }
 
-// Active reports whether this Controller is skipping WAL fsyncs.
-func (c *Controller) Active() bool {
-	if c == nil {
-		return false
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.active
-}
-
-// CheckMarker looks for a crash marker in dir before the databases are used.
+// CheckMarker looks for the crash marker in dirs[0] before the databases are
+// used. dirs lists every directory that holds node databases.
 //
 //   - No marker: nothing to do.
 //   - Marker from this boot: only the process died, and the kernel still holds
-//     every write in order. The WAL files under dir are fsynced and the marker
+//     every write in order. The WAL files under dirs are fsynced and the marker
 //     is removed.
 //   - Marker from another boot (or no boot ID): returns ErrUnsyncedCrash unless
-//     accept is true, in which case the marker is removed and the node goes on
-//     to the handshake.
-func CheckMarker(dir string, accept bool) (found bool, err error) {
-	path := filepath.Join(dir, MarkerFile)
+//     accept is true, in which case the WAL files are fsynced, the marker is
+//     removed and the node goes on to the handshake.
+func CheckMarker(dirs []string, accept bool) (found bool, err error) {
+	path := filepath.Join(dirs[0], MarkerFile)
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
@@ -141,15 +135,14 @@ func CheckMarker(dir string, accept bool) (found bool, err error) {
 	cur := bootID()
 	sameBoot := cur != "" && string(bytes.TrimSpace(b)) == cur
 	if !sameBoot && !accept {
-		return true, fmt.Errorf("%w: the databases in %s may be out of order with each other.\n"+
+		return true, fmt.Errorf("%w: the node databases may be out of order with each other.\n"+
 			"Choose one:\n"+
 			"  1. roll back the last block (`rollback`) and restart;\n"+
 			"  2. re-sync from a state sync snapshot (keep priv_validator_state.json: never delete or reset it);\n"+
-			"  3. start once with --storage.accept_unsynced_crash (or [storage] accept_unsynced_crash = true)\n"+
-			"     to try the handshake anyway, then turn it off again.\n"+
-			"marker: %s", ErrUnsyncedCrash, dir, path)
+			"  3. pass --%s once to the start command to try the handshake anyway.\n"+
+			"marker: %s", ErrUnsyncedCrash, AcceptFlag, path)
 	}
-	if sameBoot {
+	for _, dir := range dirs {
 		if err := syncWALs(dir); err != nil {
 			return true, err
 		}
@@ -160,6 +153,9 @@ func CheckMarker(dir string, accept bool) (found bool, err error) {
 // syncWALs fsyncs every WAL file under dir.
 func syncWALs(dir string) error {
 	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err != nil || d.IsDir() || !IsWAL(d.Name()) {
 			return err
 		}
@@ -167,9 +163,18 @@ func syncWALs(dir string) error {
 		if err != nil {
 			return err
 		}
-		return errors.Join(f.Sync(), f.Close())
+		if err := errors.Join(f.Sync(), f.Close()); err != nil {
+			return err
+		}
+		if testSyncedWAL != nil {
+			testSyncedWAL(p)
+		}
+		return nil
 	})
 }
+
+// testSyncedWAL is a test hook called after syncWALs fsyncs a file.
+var testSyncedWAL func(path string)
 
 func writeMarker(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -194,6 +199,8 @@ func removeMarker(path string) error {
 	return syncDir(filepath.Dir(path))
 }
 
+// syncDir fsyncs a directory.
+// TODO: use tempfile.SyncDir once #3820 is merged.
 func syncDir(dir string) error {
 	if runtime.GOOS == "windows" { // directories cannot be fsynced there
 		return nil

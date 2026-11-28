@@ -1428,13 +1428,10 @@ type StorageConfig struct {
 	// large multiple of your retain height as it might occur bigger overheads.
 	// 10000 by default.
 	CompactionInterval int64 `mapstructure:"compaction_interval"`
-	// WALFsync is "catchup" (default) to skip pebble WAL fsyncs while block
-	// syncing, or "always" to fsync them on every synced write. See
-	// libs/walfsync.
-	WALFsync string `mapstructure:"wal_fsync"`
-	// AcceptUnsyncedCrash lets the node start after the operating system went
-	// down while WAL fsyncs were skipped. Set it for one start only.
-	AcceptUnsyncedCrash bool `mapstructure:"accept_unsynced_crash"`
+	// DBWALFsync is "catchup" (default) to skip the database (pebble) WAL
+	// fsyncs while block syncing, or "always" to fsync them on every synced
+	// write. It does not affect the consensus WAL. See libs/walfsync.
+	DBWALFsync string `mapstructure:"db_wal_fsync"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1444,7 +1441,7 @@ func DefaultStorageConfig() *StorageConfig {
 		DiscardABCIResponses: false,
 		Compact:              false,
 		CompactionInterval:   10000,
-		WALFsync:             walfsync.ModeCatchup,
+		DBWALFsync:           walfsync.ModeCatchup,
 	}
 }
 
@@ -1459,7 +1456,7 @@ func TestStorageConfig() *StorageConfig {
 // ValidateBasic performs basic validation, returning an error if any check
 // fails.
 func (cfg *StorageConfig) ValidateBasic() error {
-	if err := walfsync.ValidateMode(cfg.WALFsync); err != nil {
+	if err := walfsync.ValidateMode(cfg.DBWALFsync); err != nil {
 		return err
 	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
