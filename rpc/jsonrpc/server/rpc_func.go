@@ -47,6 +47,9 @@ func Cacheable(noCacheDefArgs ...string) Option {
 	}
 }
 
+// URIOnly confines bulk responses to individual HTTP requests.
+func URIOnly() Option { return func(r *RPCFunc) { r.uriOnly = true } }
+
 // Ws enables WebSocket communication.
 func Ws() Option {
 	return func(r *RPCFunc) {
@@ -67,11 +70,12 @@ func HeavyFn(sem chan struct{}) Option {
 
 // RPCFunc contains the introspected type information for a function
 type RPCFunc struct {
-	f              reflect.Value          // underlying rpc function
-	args           []reflect.Type         // type of each function arg
-	returns        []reflect.Type         // type of each return arg
-	argNames       []string               // name of each argument
-	cacheable      bool                   // enable cache control
+	f              reflect.Value  // underlying rpc function
+	args           []reflect.Type // type of each function arg
+	returns        []reflect.Type // type of each return arg
+	argNames       []string       // name of each argument
+	cacheable      bool           // enable cache control
+	uriOnly        bool
 	ws             bool                   // enable websocket communication
 	noCacheDefArgs map[string]interface{} // a lookup table of args that, if not supplied or are set to default values, cause us to not cache
 	heavySem       chan struct{}          // if non-nil, a shared semaphore bounding concurrent heavy responses

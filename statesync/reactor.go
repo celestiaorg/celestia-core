@@ -3,7 +3,6 @@ package statesync
 import (
 	"context"
 	"errors"
-	"sort"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -291,23 +290,8 @@ func (r *Reactor) recentSnapshots(n uint32) ([]*snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(resp.Snapshots, func(i, j int) bool {
-		a := resp.Snapshots[i]
-		b := resp.Snapshots[j]
-		switch {
-		case a.Height > b.Height:
-			return true
-		case a.Height == b.Height && a.Format > b.Format:
-			return true
-		default:
-			return false
-		}
-	})
 	snapshots := make([]*snapshot, 0, n)
-	for i, s := range resp.Snapshots {
-		if i >= recentSnapshots {
-			break
-		}
+	for _, s := range abci.RecentSnapshots(resp.Snapshots, n) {
 		snapshots = append(snapshots, &snapshot{
 			Height:   s.Height,
 			Format:   s.Format,

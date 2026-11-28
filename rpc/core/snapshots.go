@@ -3,29 +3,47 @@ package core
 import (
 	"errors"
 	"math"
-	"sort"
+	"sync"
+	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 )
 
+// Coalesce inventory scans on archival nodes and bound the retained metadata.
+type snapshotOfferCache struct {
+	sync.Mutex
+	until    time.Time
+	response *abci.ResponseListSnapshots
+	err      error
+}
+
 // Snapshots lists recent state-sync snapshots for clients without a P2P slot.
 func (env *Environment) Snapshots(ctx *rpctypes.Context) (*abci.ResponseListSnapshots, error) {
+	cache := &env.snapshotOffers
+	cache.Lock()
+	defer cache.Unlock()
+	if time.Now().Before(cache.until) {
+		return cache.response, cache.err
+	}
 	resp, err := env.ProxyAppSnapshot.ListSnapshots(ctx.Context(), &abci.RequestListSnapshots{})
-	if err != nil {
-		return nil, err
+	if err == nil && resp == nil {
+		err = errors.New("missing ABCI snapshot inventory")
 	}
-	snaps := append([]*abci.Snapshot(nil), resp.Snapshots...)
-	sort.SliceStable(snaps, func(i, j int) bool {
-		if snaps[i].Height == snaps[j].Height {
-			return snaps[i].Format > snaps[j].Format
+	if err == nil {
+		offers := abci.RecentSnapshots(resp.Snapshots, 10)
+		resp = &abci.ResponseListSnapshots{}
+		budget := 4_000_000
+		for _, s := range offers {
+			if size := s.Size(); size <= budget {
+				resp.Snapshots = append(resp.Snapshots, s)
+				budget -= size
+			}
 		}
-		return snaps[i].Height > snaps[j].Height
-	})
-	if len(snaps) > 10 {
-		snaps = snaps[:10]
 	}
-	return &abci.ResponseListSnapshots{Snapshots: snaps}, nil
+	cache.response, cache.err = resp, err
+	cache.until = time.Now().Add(5 * time.Second)
+	return resp, err
 }
 
 // SnapshotChunk reads one application snapshot chunk. A pruned chunk is empty.
@@ -36,7 +54,14 @@ func (env *Environment) SnapshotChunk(ctx *rpctypes.Context, height, format, ind
 	if format > math.MaxUint32 || index > math.MaxUint32 {
 		return nil, errors.New("snapshot format or index exceeds uint32")
 	}
-	return env.ProxyAppSnapshot.LoadSnapshotChunk(ctx.Context(), &abci.RequestLoadSnapshotChunk{
+	resp, err := env.ProxyAppSnapshot.LoadSnapshotChunk(ctx.Context(), &abci.RequestLoadSnapshotChunk{
 		Height: height, Format: uint32(format), Chunk: uint32(index),
 	})
+	if err == nil && resp == nil {
+		return nil, errors.New("missing ABCI snapshot chunk response")
+	}
+	if err == nil && len(resp.Chunk) > 16_000_000 {
+		return nil, errors.New("snapshot chunk exceeds transport limit")
+	}
+	return resp, err
 }

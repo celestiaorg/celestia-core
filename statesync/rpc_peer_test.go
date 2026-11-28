@@ -1,6 +1,8 @@
 package statesync
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -56,6 +58,19 @@ func TestSnapshotRPCWithoutPeers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("data"), got.Chunk)
 	require.Equal(t, p.ID(), got.Sender)
+	// Reuse the inventory between discovery rounds.
+	var cached struct{ Snapshots []json.RawMessage }
+	require.NoError(t, p.get("/snapshots", 1024, &cached))
+	source.AssertNumberOfCalls(t, "ListSnapshots", 1)
+
+	// Bulk routes cannot accumulate multiple large results in a batch.
+	batch, err := http.Post(server.URL, "application/json", bytes.NewBufferString(`[{"jsonrpc":"2.0","id":1,"method":"snapshots"},{"jsonrpc":"2.0","id":2,"method":"snapshot_chunk"}]`))
+	require.NoError(t, err)
+	defer batch.Body.Close()
+	var replies []struct{ Error struct{ Code int } }
+	require.NoError(t, json.NewDecoder(batch.Body).Decode(&replies))
+	require.Len(t, replies, 2)
+	require.Equal(t, -32601, replies[0].Error.Code)
 	source.AssertExpectations(t)
 }
 

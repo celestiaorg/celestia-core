@@ -102,6 +102,8 @@ type Environment struct {
 
 	// heavySem bounds concurrent "heavy" RPC responses, shared across all
 	// transports. Built once, lazily, via HeavySem.
+	snapshotOffers snapshotOfferCache
+
 	heavySem     chan struct{}
 	heavySemOnce sync.Once
 }
