@@ -402,6 +402,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync CometBFT with the app.
+	// Initial state sync leaves the software version empty until the next startup.
 	consensusLogger := logger.With("module", "consensus")
 	var softwareVersion string
 	if !stateSync {
@@ -416,16 +417,6 @@ func NewNodeWithContext(ctx context.Context,
 		state, err = stateStore.Load()
 		if err != nil {
 			return nil, fmt.Errorf("cannot load state: %w", err)
-		}
-	} else {
-		// State sync skips replay, but the app can still report its release.
-		infoCtx, cancel := context.WithTimeout(ctx, time.Second)
-		info, err := proxyApp.Query().Info(infoCtx, proxy.RequestInfo)
-		cancel()
-		if err != nil {
-			consensusLogger.Debug("Could not read application software version", "err", err)
-		} else {
-			softwareVersion = info.Version
 		}
 	}
 
