@@ -147,11 +147,11 @@ func TestWriteFileAtomicManyDuplicates(t *testing.T) {
 func TestWriteFileAtomicSyncsDir(t *testing.T) {
 	dir := t.TempDir()
 	name := dir + "/state.json"
-	orig := syncDir
-	t.Cleanup(func() { syncDir = orig })
+	orig := dirSyncer
+	t.Cleanup(func() { dirSyncer = orig })
 
 	var synced []string
-	syncDir = func(d string) error {
+	dirSyncer = func(d string) error {
 		got, err := os.ReadFile(name)
 		require.NoError(t, err)
 		require.Equal(t, "new", string(got), "directory synced before the rename")
@@ -161,6 +161,6 @@ func TestWriteFileAtomicSyncsDir(t *testing.T) {
 	require.NoError(t, WriteFileAtomic(name, []byte("new"), 0o600))
 	require.Equal(t, []string{dir}, synced)
 
-	syncDir = func(string) error { return fmt.Errorf("fsync failed") }
+	dirSyncer = func(string) error { return fmt.Errorf("fsync failed") }
 	require.ErrorContains(t, WriteFileAtomic(name, []byte("newer"), 0o600), "fsync failed")
 }
