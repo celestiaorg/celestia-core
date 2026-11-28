@@ -606,3 +606,25 @@ func TestWrapFSIdempotent(t *testing.T) {
 	require.Equal(t, before+1, counting.syncs.Load(), "barrier fsyncs the WAL once")
 	require.NoError(t, f.Close())
 }
+
+// TestCheckMarkerFile checks a marker with another name: refused from another
+// boot unless accepted, and the default marker is left alone.
+func TestCheckMarkerFile(t *testing.T) {
+	t.Cleanup(func() { bootID = defaultBootID })
+	bootID = func() string { return "boot-b" }
+	dir := t.TempDir()
+	const name = "app_marker"
+	require.NoError(t, os.WriteFile(dir+"/"+name, []byte("boot-a\n"), 0o600))
+	require.NoError(t, os.WriteFile(dir+"/"+MarkerFile, []byte("boot-a\n"), 0o600))
+
+	found, err := CheckMarkerFile(name, []string{dir}, false)
+	require.True(t, found)
+	require.ErrorIs(t, err, ErrUnsyncedCrash)
+	require.FileExists(t, dir+"/"+name)
+
+	found, err = CheckMarkerFile(name, []string{dir}, true)
+	require.True(t, found)
+	require.NoError(t, err)
+	require.NoFileExists(t, dir+"/"+name)
+	require.FileExists(t, dir+"/"+MarkerFile, "the default marker is not touched")
+}
