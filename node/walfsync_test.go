@@ -23,20 +23,24 @@ func TestNodeWALFsyncMarker(t *testing.T) {
 		marker  string // "" = none
 		accept  bool
 		refused bool
+		bsDir   bool // separate blockstore_dir
 	}{
 		{name: "no marker"},
 		{name: "same boot", marker: strings.TrimSpace(string(bootID))},
+		{name: "same boot with blockstore_dir", marker: strings.TrimSpace(string(bootID)), bsDir: true},
 		{name: "other boot", marker: "another-boot", refused: true},
 		{name: "other boot accepted", marker: "another-boot", accept: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.name == "same boot" && len(bootID) == 0 {
+			if strings.HasPrefix(tc.name, "same boot") && len(bootID) == 0 {
 				t.Skip("no boot ID on this platform")
 			}
 			config := test.ResetTestRoot("node_walfsync_test")
 			defer os.RemoveAll(config.RootDir)
 			config.DBBackend = "pebbledb"
-			config.Storage.AcceptUnsyncedCrash = tc.accept
+			if tc.bsDir {
+				config.BlockstorePath = "blocks"
+			}
 			marker := filepath.Join(config.DBDir(), walfsync.MarkerFile)
 			if tc.marker != "" {
 				require.NoError(t, os.MkdirAll(config.DBDir(), 0o700))
@@ -46,8 +50,13 @@ func TestNodeWALFsyncMarker(t *testing.T) {
 			if tc.refused {
 				_, err := DefaultNewNode(config, log.TestingLogger())
 				require.ErrorIs(t, err, walfsync.ErrUnsyncedCrash)
+				require.ErrorContains(t, err, walfsync.AcceptFlag)
 				require.FileExists(t, marker)
 				return
+			}
+			if tc.accept {
+				require.NoError(t, AcceptUnsyncedDBCrash(config, log.TestingLogger()))
+				require.NoFileExists(t, marker)
 			}
 			n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
 				testFreeConfig(t, config)
@@ -60,7 +69,9 @@ func TestNodeWALFsyncMarker(t *testing.T) {
 			require.NoError(t, n.Stop())
 			n.Wait()
 			require.NoFileExists(t, marker)
-			require.False(t, walfsync.Skipping())
+			if tc.bsDir {
+				require.DirExists(t, filepath.Join(config.BlockstoreDir(), "blockstore.db"))
+			}
 		})
 	}
 }

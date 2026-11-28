@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -207,8 +208,8 @@ func TestMultiWALPowerLossRotations(t *testing.T) {
 // open).
 func TestNoCloseSyncLeavesHole(t *testing.T) {
 	resetFlag(t)
-	syncOnClose = false
-	t.Cleanup(func() { syncOnClose = true })
+	testSkipCloseSync = true
+	t.Cleanup(func() { testSkipCloseSync = false })
 
 	const n = 300
 	val := make([]byte, 4<<10)
@@ -336,17 +337,17 @@ func TestControllerMarker(t *testing.T) {
 	var nilCtrl *Controller
 	require.NoError(t, nilCtrl.StartCatchup())
 	require.NoError(t, nilCtrl.FinishCatchup())
-	require.False(t, Skipping())
+	require.False(t, skipping())
 
 	c := NewController(ModeCatchup, dir)
 	require.NoError(t, c.StartCatchup())
-	require.True(t, Skipping())
+	require.True(t, skipping())
 	b, err := os.ReadFile(dir + "/" + MarkerFile)
 	require.NoError(t, err)
 	require.Equal(t, "boot-a\n", string(b))
 
 	require.NoError(t, c.FinishCatchup())
-	require.False(t, Skipping())
+	require.False(t, skipping())
 	require.NoFileExists(t, dir+"/"+MarkerFile)
 	require.NoError(t, c.FinishCatchup()) // idempotent
 }
@@ -390,14 +391,14 @@ func TestCheckMarker(t *testing.T) {
 	}
 
 	t.Run("none", func(t *testing.T) {
-		found, err := CheckMarker(t.TempDir(), false)
+		found, err := CheckMarker([]string{t.TempDir()}, false)
 		require.NoError(t, err)
 		require.False(t, found)
 	})
 	t.Run("same boot starts", func(t *testing.T) {
 		dir := write(t)
 		require.NoError(t, os.WriteFile(dir+"/000001.log", []byte("x"), 0o600))
-		found, err := CheckMarker(dir, false)
+		found, err := CheckMarker([]string{dir}, false)
 		require.NoError(t, err)
 		require.True(t, found)
 		require.NoFileExists(t, dir+"/"+MarkerFile)
@@ -405,10 +406,10 @@ func TestCheckMarker(t *testing.T) {
 	t.Run("other boot refuses", func(t *testing.T) {
 		dir := write(t)
 		bootID = func() string { return "boot-b" }
-		found, err := CheckMarker(dir, false)
+		found, err := CheckMarker([]string{dir}, false)
 		require.ErrorIs(t, err, ErrUnsyncedCrash)
 		require.True(t, found)
-		for _, s := range []string{"rollback", "snapshot", "priv_validator_state.json", "accept_unsynced_crash"} {
+		for _, s := range []string{"rollback", "snapshot", "priv_validator_state.json", AcceptFlag} {
 			require.Contains(t, err.Error(), s)
 		}
 		require.FileExists(t, dir+"/"+MarkerFile)
@@ -416,13 +417,13 @@ func TestCheckMarker(t *testing.T) {
 	t.Run("no boot id refuses", func(t *testing.T) {
 		dir := write(t)
 		bootID = func() string { return "" }
-		_, err := CheckMarker(dir, false)
+		_, err := CheckMarker([]string{dir}, false)
 		require.ErrorIs(t, err, ErrUnsyncedCrash)
 	})
 	t.Run("override starts", func(t *testing.T) {
 		dir := write(t)
 		bootID = func() string { return "boot-b" }
-		found, err := CheckMarker(dir, true)
+		found, err := CheckMarker([]string{dir}, true)
 		require.NoError(t, err)
 		require.True(t, found)
 		require.NoFileExists(t, dir+"/"+MarkerFile)
@@ -462,4 +463,87 @@ func TestOnlyWALSyncsAreSkipped(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, size, st.Size(), name)
 	}
+}
+
+// TestBarrierWaitsForClose checks that a Barrier racing with Close does not
+// return before Close has fsynced the file.
+func TestBarrierWaitsForClose(t *testing.T) {
+	resetFlag(t)
+	cfs := &countingFS{FS: vfs.NewMem()}
+	f, err := WrapFS(cfs).Create("000001.log")
+	require.NoError(t, err)
+	begin()
+	_, err = f.Write([]byte("data"))
+	require.NoError(t, err)
+	require.NoError(t, f.Sync()) // skipped
+	require.Zero(t, cfs.syncs.Load())
+
+	paused, release := make(chan struct{}), make(chan struct{})
+	testCloseHook = func() { close(paused); <-release }
+	t.Cleanup(func() { testCloseHook = nil })
+	closed := make(chan error, 1)
+	go func() { closed <- f.Close() }()
+	<-paused
+
+	barrier := make(chan error, 1)
+	go func() { barrier <- Barrier() }()
+	select {
+	case <-barrier:
+		t.Fatal("Barrier returned before the Close fsync")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	require.NoError(t, <-closed)
+	require.NoError(t, <-barrier)
+	require.EqualValues(t, 1, cfs.syncs.Load(), "exactly one real fsync, by Close")
+}
+
+// countingFS counts real fsyncs of the files it creates.
+type countingFS struct {
+	vfs.FS
+	syncs atomic.Int64
+}
+
+type countingFile struct {
+	vfs.File
+	fs *countingFS
+}
+
+func (fs *countingFS) Create(name string) (vfs.File, error) {
+	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return countingFile{f, fs}, nil
+}
+
+func (f countingFile) Sync() error {
+	f.fs.syncs.Add(1)
+	return f.File.Sync()
+}
+
+// TestCheckMarkerSyncsAllDirs checks that the WAL files of every database
+// directory are fsynced before the marker goes.
+func TestCheckMarkerSyncsAllDirs(t *testing.T) {
+	resetFlag(t)
+	t.Cleanup(func() { bootID = defaultBootID; testSyncedWAL = nil })
+	bootID = func() string { return "boot-a" }
+	data, blocks := t.TempDir(), t.TempDir()
+	require.NoError(t, os.MkdirAll(data+"/state.db", 0o700))
+	require.NoError(t, os.MkdirAll(blocks+"/blockstore.db", 0o700))
+	require.NoError(t, os.WriteFile(data+"/state.db/000002.log", []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(blocks+"/blockstore.db/000003.log", []byte("x"), 0o600))
+	require.NoError(t, NewController(ModeCatchup, data).StartCatchup())
+	end()
+
+	var synced []string
+	testSyncedWAL = func(p string) {
+		require.FileExists(t, data+"/"+MarkerFile, "marker removed before every WAL was fsynced")
+		synced = append(synced, p)
+	}
+	found, err := CheckMarker([]string{data, blocks}, false)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.ElementsMatch(t, []string{data + "/state.db/000002.log", blocks + "/blockstore.db/000003.log"}, synced)
+	require.NoFileExists(t, data+"/"+MarkerFile)
 }

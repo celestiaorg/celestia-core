@@ -3,9 +3,11 @@ package blocksync
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/internal/test"
@@ -21,12 +23,59 @@ import (
 type switchRecorder struct {
 	p2p.BaseReactor
 	marker string
+	probe  *walProbe
 	ch     chan [2]bool
 }
 
 func (r *switchRecorder) SwitchToConsensus(sm.State, bool) {
 	_, err := os.Stat(r.marker)
-	r.ch <- [2]bool{walfsync.Skipping(), err == nil}
+	r.ch <- [2]bool{r.probe.skipping(), err == nil}
+}
+
+// walProbe is a WAL file of a wrapped FS. A Sync that does not reach the
+// underlying file means WAL fsyncs are skipped.
+type walProbe struct {
+	vfs.File
+	syncs *atomic.Int64
+}
+
+type countSyncFS struct {
+	vfs.FS
+	syncs *atomic.Int64
+}
+
+type countSyncFile struct {
+	vfs.File
+	syncs *atomic.Int64
+}
+
+func (fs countSyncFS) Create(name string) (vfs.File, error) {
+	f, err := fs.FS.Create(name)
+	return countSyncFile{f, fs.syncs}, err
+}
+
+func (f countSyncFile) Sync() error {
+	f.syncs.Add(1)
+	return f.File.Sync()
+}
+
+func newWALProbe(t *testing.T) *walProbe {
+	syncs := new(atomic.Int64)
+	f, err := walfsync.WrapFS(countSyncFS{vfs.NewMem(), syncs}).Create("probe.log")
+	require.NoError(t, err)
+	t.Cleanup(func() { f.Close() })
+	return &walProbe{f, syncs}
+}
+
+func (p *walProbe) skipping() bool {
+	before := p.syncs.Load()
+	if _, err := p.Write([]byte{1}); err != nil {
+		panic(err)
+	}
+	if err := p.Sync(); err != nil {
+		panic(err)
+	}
+	return p.syncs.Load() == before
 }
 
 // TestWALFsyncBarrierBeforeSwitch checks that block sync makes its writes
@@ -41,7 +90,7 @@ func TestWALFsyncBarrierBeforeSwitch(t *testing.T) {
 
 			dir := t.TempDir()
 			ctrl := walfsync.NewController(walfsync.ModeCatchup, dir)
-			rec := &switchRecorder{marker: filepath.Join(dir, walfsync.MarkerFile), ch: make(chan [2]bool, 1)}
+			rec := &switchRecorder{marker: filepath.Join(dir, walfsync.MarkerFile), probe: newWALProbe(t), ch: make(chan [2]bool, 1)}
 			rec.BaseReactor = *p2p.NewBaseReactor("Recorder", rec)
 
 			syncing := newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
@@ -73,8 +122,7 @@ func TestWALFsyncBarrierBeforeSwitch(t *testing.T) {
 				}, p2p.Connect2Switches)...)
 			}
 			if !localBlocks {
-				require.True(t, ctrl.Active(), "block sync did not skip WAL fsyncs")
-				require.True(t, walfsync.Skipping())
+				require.True(t, rec.probe.skipping(), "block sync did not skip WAL fsyncs")
 				require.FileExists(t, rec.marker)
 				p2p.Connect2Switches(switches, 0, 1)
 			}
@@ -86,7 +134,7 @@ func TestWALFsyncBarrierBeforeSwitch(t *testing.T) {
 			case <-time.After(60 * time.Second):
 				t.Fatal("block sync did not switch to consensus")
 			}
-			require.False(t, ctrl.Active())
+			require.False(t, rec.probe.skipping())
 		})
 	}
 }

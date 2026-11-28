@@ -12,6 +12,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	nm "github.com/cometbft/cometbft/node"
 )
 
@@ -91,10 +92,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"db_dir",
 		config.DBPath,
 		"database directory")
-	cmd.Flags().Bool(
-		"storage.accept_unsynced_crash",
-		config.Storage.AcceptUnsyncedCrash,
-		"start even though the OS crashed while WAL fsyncs were skipped (use for one start only)")
 
 	cmd.PersistentFlags().String(
 		trace.FlagTracePushConfig,
@@ -132,6 +129,11 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 			if err := checkGenesisHash(config); err != nil {
 				return err
 			}
+			if accept, _ := cmd.Flags().GetBool(walfsync.AcceptFlag); accept {
+				if err := nm.AcceptUnsyncedDBCrash(config, logger); err != nil {
+					return err
+				}
+			}
 
 			n, err := nodeProvider(config, logger)
 			if err != nil {
@@ -159,6 +161,8 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 	}
 
 	AddNodeFlags(cmd)
+	cmd.Flags().Bool(walfsync.AcceptFlag, false,
+		"start even if the OS crashed while database WAL fsyncs were skipped (pass it for one start only)")
 	return cmd
 }
 
