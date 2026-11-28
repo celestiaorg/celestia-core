@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -372,6 +373,16 @@ func (cfg BaseConfig) PrivValidatorGRPCClientCAFile() string {
 // DBDir returns the full path to the database directory
 func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
+}
+
+// DBDirs returns every directory that holds node databases: DBDir, then
+// BlockstoreDir if it differs.
+func (cfg BaseConfig) DBDirs() []string {
+	dirs := []string{cfg.DBDir()}
+	if bs := cfg.BlockstoreDir(); bs != dirs[0] {
+		dirs = append(dirs, bs)
+	}
+	return dirs
 }
 
 // BlockstoreDir returns the full path to the blockstore directory
@@ -1458,6 +1469,10 @@ type StorageConfig struct {
 	// BlockstoreGoLevelDBDisableLargeBatchTransaction writes goleveldb batches larger
 	// than the memtable through the journal, not a transaction that waits on compaction.
 	BlockstoreGoLevelDBDisableLargeBatchTransaction bool `mapstructure:"blockstore_goleveldb_disable_large_batch_transaction"`
+	// DBWALFsync is "catchup" (default) to skip the database (pebble) WAL
+	// fsyncs while block syncing, or "always" to fsync them on every synced
+	// write. It does not affect the consensus WAL. See libs/walfsync.
+	DBWALFsync string `mapstructure:"db_wal_fsync"`
 }
 
 // maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; about three
@@ -1473,6 +1488,7 @@ func DefaultStorageConfig() *StorageConfig {
 		CompactionInterval:       10000,
 		BlockstoreMemtableSizeMB: 64,
 		BlockstoreGoLevelDBDisableLargeBatchTransaction: true,
+		DBWALFsync: walfsync.ModeCatchup,
 	}
 }
 
@@ -1490,6 +1506,9 @@ func (cfg *StorageConfig) ValidateBasic() error {
 	if cfg.BlockstoreMemtableSizeMB < 0 || cfg.BlockstoreMemtableSizeMB > maxBlockstoreMemtableSizeMB {
 		return fmt.Errorf("blockstore_memtable_size_mb must be between 0 and %d, got %d",
 			maxBlockstoreMemtableSizeMB, cfg.BlockstoreMemtableSizeMB)
+	}
+	if err := walfsync.ValidateMode(cfg.DBWALFsync); err != nil {
+		return err
 	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
 		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
