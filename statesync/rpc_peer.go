@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -33,11 +34,12 @@ func (s *rpcOffer) UnmarshalJSON(b []byte) error {
 // An RPC provider participates in the same snapshot selection, verification,
 // chunk retry and sender rejection as a P2P provider.
 type rpcSnapshotPeer struct {
+	httpClient  *http.Client
 	ctx         context.Context
 	id          p2p.ID
 	base        string
 	syncer      *syncer
-	cfg         config.StateSyncConfig
+	maxChunks   uint32
 	discovering atomic.Bool
 }
 
@@ -46,7 +48,18 @@ func newRPCSnapshotPeer(ctx context.Context, i int, server string, s *syncer, cf
 	if !strings.Contains(base, "://") {
 		base = "http://" + base
 	}
-	return &rpcSnapshotPeer{ctx: ctx, id: p2p.ID(fmt.Sprintf("rpc-%d", i)), base: base, syncer: s, cfg: cfg}
+	client := snapshotHTTPClient
+	if path, unix := strings.CutPrefix(server, "unix://"); unix {
+		base = "http://localhost"
+		client = &http.Client{CheckRedirect: snapshotHTTPClient.CheckRedirect, Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, "unix", path)
+			},
+			IdleConnTimeout: 30 * time.Second,
+		}}
+	}
+	return &rpcSnapshotPeer{httpClient: client, ctx: ctx, id: p2p.ID(fmt.Sprintf("rpc-%d", i)), base: base, syncer: s, maxChunks: cfg.MaxSnapshotChunks}
 }
 
 func (p *rpcSnapshotPeer) ID() p2p.ID { return p.id }
@@ -58,7 +71,7 @@ func (p *rpcSnapshotPeer) get(path string, maxBytes int, result any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := snapshotHTTPClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -96,11 +109,11 @@ func (p *rpcSnapshotPeer) discover() {
 			return
 		}
 		for _, s := range resp.Snapshots {
-			if s == nil || s.Height > math.MaxInt64-2 || s.Height < uint64(p.cfg.TrustHeight) {
+			if s == nil || s.Height > math.MaxInt64-2 {
 				continue
 			}
 			msg := &ssproto.SnapshotsResponse{Height: s.Height, Format: s.Format, Hash: s.Hash, Chunks: s.Chunks, Metadata: s.Metadata}
-			if msg.Size() > snapshotMsgSize || validateMsg(msg, p.cfg.MaxSnapshotChunks) != nil {
+			if msg.Size() > snapshotMsgSize || validateMsg(msg, p.maxChunks) != nil {
 				continue
 			}
 			_, _ = p.syncer.AddSnapshot(p, &snapshot{Height: s.Height, Format: s.Format, Chunks: s.Chunks, Hash: s.Hash, Metadata: s.Metadata})
@@ -119,6 +132,6 @@ func (p *rpcSnapshotPeer) Send(e p2p.Envelope) bool {
 	if err := p.get(path, 2*chunkMsgSize, &resp); err != nil || len(resp.Chunk) == 0 || len(resp.Chunk) > chunkMsgSize {
 		return false
 	}
-	_, err := p.syncer.AddChunk(&chunk{Height: req.Height, Format: req.Format, Index: req.Index, Chunk: resp.Chunk, Sender: p.id})
-	return err == nil
+	added, err := p.syncer.AddChunk(&chunk{Height: req.Height, Format: req.Format, Index: req.Index, Chunk: resp.Chunk, Sender: p.id})
+	return added && err == nil
 }

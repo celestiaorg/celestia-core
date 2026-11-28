@@ -215,6 +215,12 @@ func (p *snapshotPool) RejectFormat(format uint32) {
 	}
 }
 
+func (p *snapshotPool) isPeerRejected(id p2p.ID) bool {
+	p.Lock()
+	defer p.Unlock()
+	return p.peerBlacklist[id]
+}
+
 // RejectPeer rejects a peer. It will never be used again.
 func (p *snapshotPool) RejectPeer(peerID p2p.ID) {
 	if peerID == "" {

@@ -102,6 +102,9 @@ func (s *syncer) AddChunk(chunk *chunk) (bool, error) {
 	if s.chunks == nil {
 		return false, errors.New("no state sync in progress")
 	}
+	if chunk != nil && s.snapshots.isPeerRejected(chunk.Sender) {
+		return false, nil
+	}
 	added, err := s.chunks.Add(chunk)
 	if err != nil {
 		return false, err
@@ -150,7 +153,15 @@ func (s *syncer) RemovePeer(peer p2p.Peer) {
 // RejectPeer rejects a peer from the pool.
 func (s *syncer) RejectPeer(peer p2p.Peer) {
 	s.logger.Debug("Rejecting peer from sync", "peer", peer.ID())
-	s.snapshots.RejectPeer(peer.ID())
+	s.rejectSender(peer.ID())
+}
+
+// Serialize rejection with AddChunk. Once this returns, an in-flight
+// response cannot reinsert a chunk after DiscardSender cleans the queue.
+func (s *syncer) rejectSender(id p2p.ID) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.snapshots.RejectPeer(id)
 }
 
 // SyncAny tries to sync any of the snapshots in the snapshot pool, waiting to discover further
@@ -228,7 +239,7 @@ func (s *syncer) SyncAny(discoveryTime time.Duration, retryHook func()) (sm.Stat
 			s.logger.Info("Snapshot senders rejected", "height", snapshot.Height, "format", snapshot.Format,
 				"hash", log.NewLazySprintf("%X", snapshot.Hash))
 			for _, peer := range s.snapshots.GetPeers(snapshot) {
-				s.snapshots.RejectPeer(peer.ID())
+				s.rejectSender(peer.ID())
 				s.logger.Info("Snapshot sender rejected", "peer", peer.ID())
 			}
 
@@ -413,7 +424,7 @@ func (s *syncer) applyChunks(chunks *chunkQueue) error {
 		for _, sender := range resp.RejectSenders {
 			if sender != "" {
 				peerID := p2p.ID(sender)
-				s.snapshots.RejectPeer(peerID)
+				s.rejectSender(peerID)
 				if s.onPeerRejected != nil {
 					s.onPeerRejected(peerID)
 				}

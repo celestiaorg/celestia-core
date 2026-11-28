@@ -3,8 +3,10 @@ package statesync
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -46,7 +48,7 @@ func TestSnapshotRPCWithoutPeers(t *testing.T) {
 	p := newRPCSnapshotPeer(t.Context(), 0, server.URL, s, *cfg)
 	p.discover()
 	require.Eventually(t, func() bool { return !p.discovering.Load() }, time.Second*5, time.Millisecond)
-	require.Len(t, s.snapshots.Ranked(), 1)
+	require.Len(t, s.snapshots.Ranked(), 2) // Go can verify offers below its trust height backwards.
 	best := s.snapshots.Best()
 	require.Equal(t, uint64(9), best.Height)
 	q, err := newChunkQueue(best, t.TempDir())
@@ -58,6 +60,11 @@ func TestSnapshotRPCWithoutPeers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("data"), got.Chunk)
 	require.Equal(t, p.ID(), got.Sender)
+	s.rejectSender(p.ID())
+	require.NoError(t, q.Discard(0))
+	added, err := s.AddChunk(&chunk{Height: 9, Format: 3, Index: 0, Chunk: []byte("late"), Sender: p.ID()})
+	require.NoError(t, err)
+	require.False(t, added)
 	// Reuse the inventory between discovery rounds.
 	var cached struct{ Snapshots []json.RawMessage }
 	require.NoError(t, p.get("/snapshots", 1024, &cached))
@@ -89,4 +96,21 @@ func TestSnapshotRPCResponseBounds(t *testing.T) {
 	defer redirect.Close()
 	p.base = redirect.URL
 	require.ErrorContains(t, p.get("/snapshot_chunk", 1024, &resp), "307")
+}
+
+func TestSnapshotRPCUnixEndpoint(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "rpc.sock")
+	listener, err := net.Listen("unix", socket)
+	require.NoError(t, err)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result":{"chunk":"eA=="}}`))
+	}))
+	require.NoError(t, server.Listener.Close())
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+	peer := newRPCSnapshotPeer(t.Context(), 0, "unix://"+socket, nil, *config.DefaultStateSyncConfig())
+	var result abci.ResponseLoadSnapshotChunk
+	require.NoError(t, peer.get("/snapshot_chunk", 1024, &result))
+	require.Equal(t, []byte("x"), result.Chunk)
 }
