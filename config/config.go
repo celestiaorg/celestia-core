@@ -375,6 +375,16 @@ func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
 }
 
+// DBDirs returns every directory that holds node databases: DBDir, then
+// BlockstoreDir if it differs.
+func (cfg BaseConfig) DBDirs() []string {
+	dirs := []string{cfg.DBDir()}
+	if bs := cfg.BlockstoreDir(); bs != dirs[0] {
+		dirs = append(dirs, bs)
+	}
+	return dirs
+}
+
 // BlockstoreDir returns the full path to the blockstore directory
 func (cfg BaseConfig) BlockstoreDir() string {
 	if cfg.BlockstorePath == "" {
