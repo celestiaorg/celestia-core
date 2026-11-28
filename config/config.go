@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -372,6 +373,16 @@ func (cfg BaseConfig) PrivValidatorGRPCClientCAFile() string {
 // DBDir returns the full path to the database directory
 func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
+}
+
+// DBDirs returns every directory that holds node databases: DBDir, then
+// BlockstoreDir if it differs.
+func (cfg BaseConfig) DBDirs() []string {
+	dirs := []string{cfg.DBDir()}
+	if bs := cfg.BlockstoreDir(); bs != dirs[0] {
+		dirs = append(dirs, bs)
+	}
+	return dirs
 }
 
 // BlockstoreDir returns the full path to the blockstore directory
@@ -1427,6 +1438,10 @@ type StorageConfig struct {
 	// large multiple of your retain height as it might occur bigger overheads.
 	// 10000 by default.
 	CompactionInterval int64 `mapstructure:"compaction_interval"`
+	// DBWALFsync is "catchup" (default) to skip the database (pebble) WAL
+	// fsyncs while block syncing, or "always" to fsync them on every synced
+	// write. It does not affect the consensus WAL. See libs/walfsync.
+	DBWALFsync string `mapstructure:"db_wal_fsync"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1436,6 +1451,7 @@ func DefaultStorageConfig() *StorageConfig {
 		DiscardABCIResponses: false,
 		Compact:              false,
 		CompactionInterval:   10000,
+		DBWALFsync:           walfsync.ModeCatchup,
 	}
 }
 
@@ -1450,6 +1466,9 @@ func TestStorageConfig() *StorageConfig {
 // ValidateBasic performs basic validation, returning an error if any check
 // fails.
 func (cfg *StorageConfig) ValidateBasic() error {
+	if err := walfsync.ValidateMode(cfg.DBWALFsync); err != nil {
+		return err
+	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
 		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
 	}

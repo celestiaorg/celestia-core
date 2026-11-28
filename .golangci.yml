@@ -100,6 +100,7 @@ linters:
             - google.golang.org/protobuf/encoding/protowire
             - google.golang.org/protobuf/proto
             - github.com/filecoin-project/go-clock
+            - github.com/cockroachdb/pebble
     dogsled:
       max-blank-identifiers: 3
     gosec:

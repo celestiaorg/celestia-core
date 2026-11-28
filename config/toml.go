@@ -604,6 +604,17 @@ compact = {{ .Storage.Compact }}
 # large multiple of your retain height as it might occur bigger overheads.
 compaction_interval = {{ .Storage.CompactionInterval }}
 
+# pebbledb only. When to fsync the write-ahead logs of the node's databases
+# (not the consensus WAL):
+#   "catchup": skip them while block syncing and fsync every database WAL
+#              before switching to consensus. Every write still reaches the
+#              kernel before it returns, so a process crash loses nothing. A
+#              power loss or kernel crash while block syncing can leave the
+#              databases out of order; the node then refuses to start until you
+#              roll back, re-sync, or start once with --accept_unsynced_db_crash.
+#   "always":  fsync on every synced write.
+db_wal_fsync = "{{ .Storage.DBWALFsync }}"
+
 #######################################################
 ###   Transaction Indexer Configuration Options     ###
 #######################################################
