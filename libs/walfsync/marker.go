@@ -137,9 +137,10 @@ func CheckMarker(dirs []string, accept bool) (found bool, err error) {
 	if !sameBoot && !accept {
 		return true, fmt.Errorf("%w: the node databases may be out of order with each other.\n"+
 			"Choose one:\n"+
-			"  1. roll back the last block (`rollback`) and restart;\n"+
+			"  1. roll back the last block (`rollback`, which also clears this marker) and restart;\n"+
 			"  2. re-sync from a state sync snapshot (keep priv_validator_state.json: never delete or reset it);\n"+
-			"  3. pass --%s once to the start command to try the handshake anyway.\n"+
+			"  3. start once with --%s (cometbft start) or your application's equivalent flag\n"+
+			"     to try the handshake anyway.\n"+
 			"marker: %s", ErrUnsyncedCrash, AcceptFlag, path)
 	}
 	for _, dir := range dirs {
@@ -150,14 +151,44 @@ func CheckMarker(dirs []string, accept bool) (found bool, err error) {
 	return true, removeMarker(path)
 }
 
-// syncWALs fsyncs every WAL file under dir.
+// syncWALs fsyncs every WAL file under dir. It follows a symlinked dir and
+// symlinked directories inside it (a database directory on another disk).
 func syncWALs(dir string) error {
+	return syncWALsIn(dir, make(map[string]bool))
+}
+
+func syncWALsIn(dir string, seen map[string]bool) error {
+	dir, err := filepath.EvalSymlinks(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil || seen[dir] {
+		return err
+	}
+	seen[dir] = true
 	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
-		if err != nil || d.IsDir() || !IsWAL(d.Name()) {
+		if err != nil {
 			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			st, err := os.Stat(p)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // dangling
+			}
+			if err != nil {
+				return err
+			}
+			if st.IsDir() {
+				return syncWALsIn(p, seen)
+			}
+		} else if d.IsDir() {
+			return nil
+		}
+		if !IsWAL(d.Name()) {
+			return nil
 		}
 		f, err := os.OpenFile(p, os.O_RDWR, 0)
 		if err != nil {

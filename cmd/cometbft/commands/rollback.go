@@ -11,6 +11,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/os"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
 )
@@ -137,6 +138,11 @@ func CheckRollbackDepth(target RollbackTarget, force bool) error {
 // at height n - 1. Note state here refers to CometBFT state not application state.
 // Returns the latest state height and app hash alongside an error if there was one.
 func RollbackState(config *cfg.Config, removeBlock bool) (int64, []byte, error) {
+	height, hash, err := rollbackState(config, removeBlock)
+	return clearUnsyncedMarker(config, height, hash, err)
+}
+
+func rollbackState(config *cfg.Config, removeBlock bool) (int64, []byte, error) {
 	// use the parsed config to load the block and state store
 	blockStore, stateStore, err := loadStateAndBlockStore(config)
 	if err != nil {
@@ -172,6 +178,11 @@ func CheckRollbackState(config *cfg.Config, height int64, removeBlock bool) (sta
 
 // RollbackStateToHeight rolls state back to height and returns the new height and app hash.
 func RollbackStateToHeight(config *cfg.Config, height int64, removeBlock bool) (int64, []byte, error) {
+	height, hash, err := rollbackStateToHeight(config, height, removeBlock)
+	return clearUnsyncedMarker(config, height, hash, err)
+}
+
+func rollbackStateToHeight(config *cfg.Config, height int64, removeBlock bool) (int64, []byte, error) {
 	blockStore, stateStore, err := loadStateAndBlockStore(config)
 	if err != nil {
 		return -1, nil, err
@@ -182,6 +193,20 @@ func RollbackStateToHeight(config *cfg.Config, height int64, removeBlock bool) (
 	}()
 
 	return state.RollbackToHeight(blockStore, stateStore, height, removeBlock)
+}
+
+// clearUnsyncedMarker runs after the stores are closed. Once a rollback has
+// succeeded, it fsyncs the database WAL files and removes the crash marker
+// left by an OS crash while database WAL fsyncs were skipped, so the next
+// start goes on to the handshake.
+func clearUnsyncedMarker(config *cfg.Config, height int64, hash []byte, err error) (int64, []byte, error) {
+	if err != nil {
+		return height, hash, err
+	}
+	if _, err := walfsync.CheckMarker(config.DBDirs(), true); err != nil {
+		return height, hash, fmt.Errorf("rolled back, but could not clear the WAL fsync marker: %w", err)
+	}
+	return height, hash, nil
 }
 
 func loadStateAndBlockStore(config *cfg.Config) (*store.BlockStore, state.Store, error) {

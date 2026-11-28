@@ -67,8 +67,14 @@ func end() { catchingUp.Add(-1) }
 func IsWAL(name string) bool { return strings.HasSuffix(name, ".log") }
 
 // WrapFS wraps fs so that its WAL files follow the catch-up flag. Pass the
-// result as pebble.Options.FS.
-func WrapFS(fs vfs.FS) vfs.FS { return walFS{fs} }
+// result as pebble.Options.FS. An fs that WrapFS already wrapped is returned
+// unchanged, so each WAL file has exactly one wrapper.
+func WrapFS(fs vfs.FS) vfs.FS {
+	if w, ok := fs.(walFS); ok {
+		return w
+	}
+	return walFS{fs}
+}
 
 type walFS struct{ vfs.FS }
 

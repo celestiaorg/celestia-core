@@ -309,20 +309,11 @@ func createEvidenceReactor(config *cfg.Config, dbProvider cfg.DBProvider,
 	return evidenceReactor, evidencePool, nil
 }
 
-// dbDirs returns every directory that holds node databases, marker first.
-func dbDirs(config *cfg.Config) []string {
-	dirs := []string{config.DBDir()}
-	if bs := config.BlockstoreDir(); bs != dirs[0] {
-		dirs = append(dirs, bs)
-	}
-	return dirs
-}
-
 // checkWALFsync refuses to start after an OS crash that happened while
 // database WAL fsyncs were skipped, and returns the controller for this node
 // (nil when those fsyncs are never skipped).
 func checkWALFsync(config *cfg.Config, logger log.Logger) (*walfsync.Controller, error) {
-	found, err := walfsync.CheckMarker(dbDirs(config), false)
+	found, err := walfsync.CheckMarker(config.DBDirs(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +331,7 @@ func checkWALFsync(config *cfg.Config, logger log.Logger) (*walfsync.Controller,
 // on to the handshake. Start commands call it for the one-shot
 // --accept_unsynced_db_crash flag, before creating the node.
 func AcceptUnsyncedDBCrash(config *cfg.Config, logger log.Logger) error {
-	found, err := walfsync.CheckMarker(dbDirs(config), true)
+	found, err := walfsync.CheckMarker(config.DBDirs(), true)
 	if err != nil {
 		return err
 	}
