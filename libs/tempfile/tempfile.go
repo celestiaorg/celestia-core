@@ -130,13 +130,16 @@ func WriteFileAtomic(filename string, data []byte, perm os.FileMode) (err error)
 		return err
 	}
 	// Without this a power loss can undo the rename and bring back the old file.
-	return syncDir(dir)
+	return dirSyncer(dir)
 }
 
-// syncDir fsyncs a directory so that a rename in it is durable. It is a
-// variable so tests can observe it.
-var syncDir = func(dir string) error {
-	if runtime.GOOS == "windows" { // directories cannot be fsynced there
+// dirSyncer is SyncDir; tests replace it to observe the call.
+var dirSyncer = SyncDir
+
+// SyncDir fsyncs a directory so that a create, rename or removal in it is
+// durable. It does nothing on Windows, where directories cannot be fsynced.
+func SyncDir(dir string) error {
+	if runtime.GOOS == "windows" {
 		return nil
 	}
 	d, err := os.Open(dir)
