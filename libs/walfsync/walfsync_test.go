@@ -584,3 +584,25 @@ func TestCheckMarkerFollowsSymlinks(t *testing.T) {
 	}
 	require.ElementsMatch(t, want, synced)
 }
+
+// TestWrapFSIdempotent checks that wrapping twice gives one layer: the WAL file
+// is tracked once and a barrier fsyncs it.
+func TestWrapFSIdempotent(t *testing.T) {
+	resetFlag(t)
+	counting := &countingFS{FS: vfs.NewMem()}
+	fs := WrapFS(counting)
+	require.Equal(t, fs, WrapFS(fs))
+
+	f, err := WrapFS(fs).Create("000001.log")
+	require.NoError(t, err)
+	_, ok := f.(*walFile).File.(*walFile)
+	require.False(t, ok, "WAL file wrapped twice")
+
+	begin()
+	require.NoError(t, f.Sync())
+	end()
+	before := counting.syncs.Load()
+	require.NoError(t, Barrier())
+	require.Equal(t, before+1, counting.syncs.Load(), "barrier fsyncs the WAL once")
+	require.NoError(t, f.Close())
+}
