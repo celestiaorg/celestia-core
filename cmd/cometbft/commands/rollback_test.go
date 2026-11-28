@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -175,4 +177,35 @@ func requireStoreHeights(t *testing.T, config *cfg.Config, blockHeight, stateHei
 	require.NoError(t, err)
 	require.Equal(t, blockHeight, blockStore.Height())
 	require.Equal(t, stateHeight, st.LastBlockHeight)
+}
+
+// A successful rollback clears the crash marker left by an OS crash while
+// database WAL fsyncs were skipped, so the next start does not refuse again.
+// A failed rollback leaves it.
+func TestRollbackClearsUnsyncedCrashMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		blockHeight int64
+		ok          bool
+	}{{"ok", 5, true}, {"failed", 6, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := newRollbackConfig(t)
+			config.BlockstorePath = "blockstore"
+			setupRollbackStores(t, config, 5, tc.blockHeight)
+			marker := filepath.Join(config.DBDir(), walfsync.MarkerFile)
+			require.NoError(t, os.WriteFile(marker, []byte("another-boot\n"), 0o600))
+
+			err := runRollback(config, 0, false, false)
+			if !tc.ok {
+				require.Error(t, err)
+				require.FileExists(t, marker)
+				return
+			}
+			require.NoError(t, err)
+			require.NoFileExists(t, marker)
+			found, err := walfsync.CheckMarker(config.DBDirs(), false)
+			require.NoError(t, err)
+			require.False(t, found)
+		})
+	}
 }

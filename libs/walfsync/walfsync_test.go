@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -546,4 +547,40 @@ func TestCheckMarkerSyncsAllDirs(t *testing.T) {
 	require.True(t, found)
 	require.ElementsMatch(t, []string{data + "/state.db/000002.log", blocks + "/blockstore.db/000003.log"}, synced)
 	require.NoFileExists(t, data+"/"+MarkerFile)
+}
+
+// TestCheckMarkerFollowsSymlinks checks that WAL files are fsynced when the
+// data directory, or a database directory inside it, is a symlink.
+func TestCheckMarkerFollowsSymlinks(t *testing.T) {
+	resetFlag(t)
+	t.Cleanup(func() { bootID = defaultBootID; testSyncedWAL = nil })
+	bootID = func() string { return "boot-a" }
+	base := t.TempDir()
+	realData, realBlocks := base+"/disk1/data", base+"/disk2/blockstore.db"
+	require.NoError(t, os.MkdirAll(realData+"/state.db", 0o700))
+	require.NoError(t, os.MkdirAll(realBlocks, 0o700))
+	require.NoError(t, os.WriteFile(realData+"/state.db/000002.log", []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(realBlocks+"/000003.log", []byte("x"), 0o600))
+	data := base + "/data"
+	require.NoError(t, os.Symlink(realData, data))
+	require.NoError(t, os.Symlink(realBlocks, realData+"/blockstore.db"))
+	require.NoError(t, NewController(ModeCatchup, data).StartCatchup())
+	end()
+
+	var synced []string
+	testSyncedWAL = func(p string) {
+		r, err := filepath.EvalSymlinks(p)
+		require.NoError(t, err)
+		synced = append(synced, r)
+	}
+	found, err := CheckMarker([]string{data}, false)
+	require.NoError(t, err)
+	require.True(t, found)
+	want := []string{realData + "/state.db/000002.log", realBlocks + "/000003.log"}
+	for i, w := range want {
+		r, err := filepath.EvalSymlinks(w)
+		require.NoError(t, err)
+		want[i] = r
+	}
+	require.ElementsMatch(t, want, synced)
 }
