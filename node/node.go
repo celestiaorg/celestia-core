@@ -8,10 +8,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -404,6 +406,16 @@ func NewNodeWithContext(ctx context.Context,
 		state, err = stateStore.Load()
 		if err != nil {
 			return nil, fmt.Errorf("cannot load state: %w", err)
+		}
+	} else {
+		// State sync skips replay, but the app can still report its release.
+		infoCtx, cancel := context.WithTimeout(ctx, time.Second)
+		info, err := proxyApp.Query().Info(infoCtx, proxy.RequestInfo)
+		cancel()
+		if err != nil {
+			consensusLogger.Debug("Could not read application software version", "err", err)
+		} else {
+			softwareVersion = info.Version
 		}
 	}
 
@@ -1136,6 +1148,19 @@ func (n *Node) NodeInfo() p2p.NodeInfo {
 	return n.nodeInfo
 }
 
+// nodeSoftwareVersion advertises the ABCI software release in the existing
+// NodeInfo version string so older peers can relay it through /net_info.
+func nodeSoftwareVersion(appVersion string) string {
+	appVersion = strings.TrimPrefix(appVersion, "v")
+	if len(appVersion) > 64 {
+		return version.TMCoreSemVer
+	}
+	if _, err := semver.StrictNewVersion(appVersion); err != nil {
+		return version.TMCoreSemVer
+	}
+	return version.TMCoreSemVer + "-celestia-app." + appVersion
+}
+
 func makeNodeInfo(
 	config *cfg.Config,
 	nodeKey *p2p.NodeKey,
@@ -1174,7 +1199,7 @@ func makeNodeInfo(
 		),
 		DefaultNodeID: nodeKey.ID(),
 		Network:       genDoc.ChainID,
-		Version:       version.TMCoreSemVer,
+		Version:       nodeSoftwareVersion(softwareVersion),
 		Channels:      channels,
 		Moniker:       config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{
