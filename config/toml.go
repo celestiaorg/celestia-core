@@ -340,10 +340,10 @@ persistent_peers_max_dial_period = "{{ .P2P.PersistentPeersMaxDialPeriod }}"
 # Time to wait before flushing messages out on the connection
 flush_throttle_timeout = "{{ .P2P.FlushThrottleTimeout }}"
 
-# Flush latency-critical messages (votes, round steps, compact blocks,
-# haves, wants, recovery parts) as soon as none are left queued, instead of
-# waiting for flush_throttle_timeout. Other traffic stays batched.
-flush_low_latency = {{ .P2P.FlushLowLatency }}
+# How long latency-critical messages (votes, round steps, compact blocks,
+# haves, wants, recovery parts) wait once none are left queued, so bursts
+# share frames. "0s" waits for flush_throttle_timeout like other traffic.
+flush_low_latency = "{{ .P2P.FlushLowLatency }}"
 
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = {{ .P2P.MaxPacketMsgPayloadSize }}
@@ -641,6 +641,17 @@ blockstore_memtable_size_mb = {{ .Storage.BlockstoreMemtableSizeMB }}
 # instead of straight to level-0 tables, which waits on compaction. Set this to false and
 # the size above to 0 to restore the engine defaults.
 blockstore_goleveldb_disable_large_batch_transaction = {{ .Storage.BlockstoreGoLevelDBDisableLargeBatchTransaction }}
+
+# pebbledb only. When to fsync the write-ahead logs of the node's databases
+# (not the consensus WAL):
+#   "catchup": skip them while block syncing and fsync every database WAL
+#              before switching to consensus. Every write still reaches the
+#              kernel before it returns, so a process crash loses nothing. A
+#              power loss or kernel crash while block syncing can leave the
+#              databases out of order; the node then refuses to start until you
+#              roll back, re-sync, or start once with --accept_unsynced_db_crash.
+#   "always":  fsync on every synced write.
+db_wal_fsync = "{{ .Storage.DBWALFsync }}"
 
 #######################################################
 ###   Transaction Indexer Configuration Options     ###

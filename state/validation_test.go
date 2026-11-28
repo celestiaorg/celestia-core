@@ -17,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/store"
@@ -519,6 +520,127 @@ func TestValidateBlockTime(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "too far in the future")
 	})
+}
+
+// TestValidateBlockMedianTimeRuleByAppVersion checks that ValidateBlock uses
+// the median rule of the app version in state. Each commit has 4 equal-power
+// signers, so the legacy rule picks the 2nd timestamp and the strict rule
+// picks the 3rd. The test also covers the first block after the app upgrades
+// to StrictMedianTimeAppVersion.
+func TestValidateBlockMedianTimeRuleByAppVersion(t *testing.T) {
+	app := &testApp{AppVersion: sm.StrictMedianTimeAppVersion - 1}
+	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app), proxy.NopMetrics())
+	require.NoError(t, proxyApp.Start())
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, privVals := makeState(4, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	mp := &mpmocks.Mempool{}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	mp.On("Update",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mp,
+		sm.EmptyEvidencePool{},
+		store.NewBlockStore(dbm.NewMemDB()),
+	)
+
+	// Height 1 moves state to the legacy app version.
+	state, blockID, err := makeAndApplyGoodBlock(
+		state, 1, &types.Commit{}, state.Validators.GetProposer().Address, blockExec, nil)
+	require.NoError(t, err)
+	require.Equal(t, sm.StrictMedianTimeAppVersion-1, state.Version.Consensus.App)
+
+	commit, legacyTime, strictTime := makeSpreadCommit(t, state, 1, blockID, privVals)
+	requireMedianTimeRule(t, blockExec, state, 2, commit, legacyTime, strictTime)
+
+	// Height 2 is made with the legacy rule. The app upgrades in this block,
+	// so height 3 is the first block that uses the strict rule.
+	app.AppVersion = sm.StrictMedianTimeAppVersion
+	state, blockID, err = makeAndApplyGoodBlock(
+		state, 2, commit, state.Validators.GetProposer().Address, blockExec, nil)
+	require.NoError(t, err)
+	require.Equal(t, sm.StrictMedianTimeAppVersion, state.Version.Consensus.App)
+
+	commit, legacyTime, strictTime = makeSpreadCommit(t, state, 2, blockID, privVals)
+	requireMedianTimeRule(t, blockExec, state, 3, commit, strictTime, legacyTime)
+}
+
+// makeSpreadCommit signs a commit for height in which validator i votes at
+// LastBlockTime + (i+1) seconds. It returns the commit and the times that the
+// legacy and strict median rules select for 4 equal-power signers.
+func makeSpreadCommit(
+	t *testing.T,
+	state sm.State,
+	height int64,
+	blockID types.BlockID,
+	privVals map[string]types.PrivValidator,
+) (*types.Commit, time.Time, time.Time) {
+	t.Helper()
+	require.Equal(t, 4, state.Validators.Size())
+
+	times := make([]time.Time, state.Validators.Size())
+	sigs := make([]types.ExtendedCommitSig, state.Validators.Size())
+	for i := range sigs {
+		_, val := state.Validators.GetByIndex(int32(i))
+		require.EqualValues(t, 1000, val.VotingPower)
+		times[i] = state.LastBlockTime.Add(time.Duration(i+1) * time.Second)
+		vote, err := types.MakeVote(
+			privVals[val.Address.String()],
+			chainID,
+			int32(i),
+			height,
+			0,
+			cmtproto.PrecommitType,
+			blockID,
+			times[i],
+		)
+		require.NoError(t, err)
+		sigs[i] = vote.ExtendedCommitSig()
+	}
+	extCommit := &types.ExtendedCommit{
+		Height:             height,
+		BlockID:            blockID,
+		ExtendedSignatures: sigs,
+	}
+	return extCommit.ToCommit(), times[1], times[2]
+}
+
+// requireMedianTimeRule checks that a block at height built on commit gets
+// want as its time, that ValidateBlock accepts it, and that ValidateBlock
+// rejects the same block with the other rule's time.
+func requireMedianTimeRule(
+	t *testing.T,
+	blockExec *sm.BlockExecutor,
+	state sm.State,
+	height int64,
+	commit *types.Commit,
+	want time.Time,
+	other time.Time,
+) {
+	t.Helper()
+	require.False(t, want.Equal(other))
+
+	block, _, err := makeBlock(state, height, commit)
+	require.NoError(t, err)
+	require.True(t, want.Equal(block.Time), "app version %d: got %v, want %v",
+		state.Version.Consensus.App, block.Time, want)
+	require.NoError(t, blockExec.ValidateBlock(state, block))
+
+	block.Time = other
+	require.ErrorContains(t, blockExec.ValidateBlock(state, block), "invalid block time")
 }
 
 func TestValidateBlockInvalidCommit(t *testing.T) {

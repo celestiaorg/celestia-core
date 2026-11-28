@@ -33,6 +33,11 @@ func AddPeerToSwitchPeerSet(sw *Switch, peer Peer) {
 	sw.peers.Add(peer) //nolint:errcheck // ignore error
 }
 
+// AddPeerToReactorPeerSet makes sw's Broadcasts on reactor's channels reach peer.
+func AddPeerToReactorPeerSet(sw *Switch, reactor Reactor, peer Peer) {
+	sw.peerSetForReactor(reactor).Add(peer) //nolint:errcheck // ignore error
+}
+
 func CreateRandomPeer(outbound bool) Peer {
 	addr, netAddr := CreateRoutableAddr()
 	p := &peer{

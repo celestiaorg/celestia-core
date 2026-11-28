@@ -103,3 +103,26 @@ func TestWeightedMedianRequiresStrictMajority(t *testing.T) {
 	median := WeightedMedian(m, 7)
 	assert.Equal(t, t2, median)
 }
+
+// TestLegacyWeightedMedian pins the rule used before app version 12: the first
+// time whose cumulative weight reaches floor(P/2). Blocks committed under that
+// rule must keep validating, so it differs from WeightedMedian only at an exact
+// half-weight boundary.
+func TestLegacyWeightedMedian(t *testing.T) {
+	t1 := Now()
+	t2 := t1.Add(1 * time.Second)
+	t3 := t1.Add(2 * time.Second)
+	t4 := t1.Add(3 * time.Second)
+
+	newTimes := func() []*WeightedTime {
+		return []*WeightedTime{
+			NewWeightedTime(t1, 1),
+			NewWeightedTime(t2, 1),
+			NewWeightedTime(t3, 1),
+			NewWeightedTime(t4, 1),
+		}
+	}
+
+	assert.Equal(t, t2, LegacyWeightedMedian(newTimes(), 4))
+	assert.Equal(t, t3, WeightedMedian(newTimes(), 4))
+}

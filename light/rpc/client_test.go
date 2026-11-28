@@ -2,12 +2,14 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/light/rpc/mocks"
@@ -131,6 +133,17 @@ func (n nextBlockClient) BlockByHash(_ context.Context, _ []byte) (*ctypes.Resul
 	}, nil
 }
 
+func (n nextBlockClient) Block(_ context.Context, _ *int64) (*ctypes.ResultBlock, error) {
+	return &ctypes.ResultBlock{
+		BlockID: types.BlockID{Hash: n.block.Hash()},
+		Block:   n.block,
+	}, nil
+}
+
+func (n nextBlockClient) BlockResults(_ context.Context, _ *int64) (*ctypes.ResultBlockResults, error) {
+	return &ctypes.ResultBlockResults{Height: n.block.Height}, nil
+}
+
 func (n nextBlockClient) HeaderByHash(_ context.Context, _ cmtbytes.HexBytes) (*ctypes.ResultHeader, error) {
 	return &ctypes.ResultHeader{Header: &n.block.Header}, nil
 }
@@ -158,6 +171,34 @@ func TestBlockByHashRejectsMismatchedHash(t *testing.T) {
 	_, err := c.BlockByHash(context.Background(), requestedHash)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match requested hash")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// A malicious upstream can answer a Block request with a genuine block from a
+// different height. The response must be rejected on the height mismatch
+// before any light-client verification runs.
+func TestBlockRejectsMismatchedHeight(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHeight := int64(100)
+	_, err := c.Block(context.Background(), &requestedHeight)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested height")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// A malicious upstream can label the results of one block with the height of
+// another. The response must be rejected on the height mismatch before any
+// light-client verification runs.
+func TestBlockResultsRejectsMismatchedHeight(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHeight := int64(100)
+	_, err := c.BlockResults(context.Background(), &requestedHeight)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested height")
 	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
 }
 
@@ -255,4 +296,48 @@ func TestSubscribeWSStopsForwarding(t *testing.T) {
 			}, 5*time.Second, time.Millisecond)
 		})
 	}
+}
+
+// Update returns no light block and no error when the primary has nothing
+// newer than the latest trusted light block. Requests without a height must
+// then be served from the latest trusted light block instead of panicking.
+func TestNoHeightRequestsUseLatestTrustedLightBlock(t *testing.T) {
+	const latestTrustedHeight int64 = 0
+
+	trustedBlock := makeValidBlock(t, 5)
+	validator := types.NewValidator(ed25519.GenPrivKey().PubKey(), 10)
+	trusted := &types.LightBlock{
+		SignedHeader: &types.SignedHeader{Header: &trustedBlock.Header, Commit: &types.Commit{}},
+		ValidatorSet: types.NewValidatorSet([]*types.Validator{validator}),
+	}
+
+	lc := &mocks.LightClient{}
+	lc.On("Update", mock.Anything, mock.Anything).Return(nil, nil)
+	lc.On("TrustedLightBlock", latestTrustedHeight).Return(trusted, nil)
+	c := NewClient(nextBlockClient{}, lc)
+	ctx := context.Background()
+
+	commit, err := c.Commit(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, commit.Height)
+
+	header, err := c.Header(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, header.Header.Height)
+
+	validators, err := c.Validators(ctx, nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, trustedBlock.Height, validators.BlockHeight)
+	require.Equal(t, 1, validators.Total)
+}
+
+// A failed update for a request without a height must return an error
+// instead of dereferencing the nil height.
+func TestNoHeightRequestsReturnUpdateError(t *testing.T) {
+	lc := &mocks.LightClient{}
+	lc.On("Update", mock.Anything, mock.Anything).Return(nil, errors.New("primary unavailable"))
+	c := NewClient(nextBlockClient{}, lc)
+
+	_, err := c.Commit(context.Background(), nil)
+	require.ErrorContains(t, err, "primary unavailable")
 }

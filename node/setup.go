@@ -26,6 +26,7 @@ import (
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/light"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
@@ -308,6 +309,46 @@ func createEvidenceReactor(config *cfg.Config, dbProvider cfg.DBProvider,
 	return evidenceReactor, evidencePool, nil
 }
 
+// dbDirs returns every directory that holds node databases, marker first.
+func dbDirs(config *cfg.Config) []string {
+	dirs := []string{config.DBDir()}
+	if bs := config.BlockstoreDir(); bs != dirs[0] {
+		dirs = append(dirs, bs)
+	}
+	return dirs
+}
+
+// checkWALFsync refuses to start after an OS crash that happened while
+// database WAL fsyncs were skipped, and returns the controller for this node
+// (nil when those fsyncs are never skipped).
+func checkWALFsync(config *cfg.Config, logger log.Logger) (*walfsync.Controller, error) {
+	found, err := walfsync.CheckMarker(dbDirs(config), false)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		logger.Info("Previous run stopped while database WAL fsyncs were skipped; the OS did not crash, so the WAL files were fsynced")
+	}
+	if dbm.BackendType(config.DBBackend) != dbm.PebbleDBBackend {
+		return nil, nil
+	}
+	return walfsync.NewController(config.Storage.DBWALFsync, config.DBDir()), nil
+}
+
+// AcceptUnsyncedDBCrash clears the crash marker left when the operating system
+// went down while database WAL fsyncs were skipped, so the next node start goes
+// on to the handshake. Start commands call it for the one-shot
+// --accept_unsynced_db_crash flag, before creating the node.
+func AcceptUnsyncedDBCrash(config *cfg.Config, logger log.Logger) error {
+	found, err := walfsync.CheckMarker(dbDirs(config), true)
+	if err != nil {
+		return err
+	}
+	logger.Error("--"+walfsync.AcceptFlag+" is set: starting even if the OS crashed while database WAL fsyncs were skipped. "+
+		"If the handshake fails, roll back or re-sync from a snapshot.", "marker_found", found)
+	return nil
+}
+
 func createBlocksyncReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
@@ -318,10 +359,12 @@ func createBlocksyncReactor(config *cfg.Config,
 	metrics *blocksync.Metrics,
 	offlineStateSyncHeight int64,
 	tracer trace.Tracer,
+	walFsync *walfsync.Controller,
 ) (bcReactor p2p.Reactor, err error) {
 	switch config.BlockSync.Version {
 	case "v0":
-		bcReactor = blocksync.NewReactorWithAddr(state.Copy(), blockExec, blockStore, blockSync, localAddr, metrics, offlineStateSyncHeight, tracer, blocksync.ReactorVerifyData(config.BlockSync.VerifyData), blocksync.ReactorMaxRequesters(config.BlockSync.MaxRequesters), blocksync.ReactorPipeline(config.BlockSync.Pipeline))
+		bcReactor = blocksync.NewReactorWithAddr(state.Copy(), blockExec, blockStore, blockSync, localAddr, metrics, offlineStateSyncHeight, tracer,
+			blocksync.ReactorVerifyData(config.BlockSync.VerifyData), blocksync.ReactorMaxRequesters(config.BlockSync.MaxRequesters), blocksync.ReactorPipeline(config.BlockSync.Pipeline), blocksync.ReactorWALFsync(walFsync))
 	case "v1", "v2":
 		return nil, fmt.Errorf("block sync version %s has been deprecated. Please use v0", config.BlockSync.Version)
 	default:

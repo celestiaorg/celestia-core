@@ -30,6 +30,7 @@ import (
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
@@ -100,6 +101,7 @@ type Node struct {
 	pyroscopeTracer     *sdktrace.TracerProvider
 	privvalGRPCServer   *grpc.Server
 	privvalGRPCListener net.Listener
+	walFsync            *walfsync.Controller // skips WAL fsyncs while block syncing
 }
 
 // Option sets a parameter for the node.
@@ -302,6 +304,10 @@ func NewNodeWithContext(ctx context.Context,
 	options ...Option,
 ) (*Node, error) {
 	types.SetParallelCommitVerify(config.ParallelCommitVerify)
+	walFsync, err := checkWALFsync(config, logger)
+	if err != nil {
+		return nil, err
+	}
 
 	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 	if err != nil {
@@ -450,7 +456,7 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 	// Don't start block sync if we're doing a state sync first.
-	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
+	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer, walFsync)
 	if err != nil {
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
@@ -565,6 +571,7 @@ func NewNodeWithContext(ctx context.Context,
 	addrBook.AddPrivateIDs(splitAndTrimEmpty(config.P2P.PrivatePeerIDs, ",", " "))
 
 	node := &Node{
+		walFsync:      walFsync,
 		config:        config,
 		genesisDoc:    genDoc,
 		privValidator: privValidator,
@@ -863,6 +870,10 @@ func (n *Node) OnStop() {
 		if err := n.EvidencePool().Close(); err != nil {
 			n.Logger.Error("problem closing evidencestore", "err", err)
 		}
+	}
+	// Covers the databases that are not closed above (tx_index).
+	if err := n.walFsync.FinishCatchup(); err != nil {
+		n.Logger.Error("problem fsyncing WAL files", "err", err)
 	}
 }
 

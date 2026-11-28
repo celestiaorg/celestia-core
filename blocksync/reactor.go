@@ -11,6 +11,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/libs/walfsync"
 	"github.com/cometbft/cometbft/p2p"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -72,6 +73,15 @@ func ReactorVerifyData(verifyData bool) ReactorOption {
 	}
 }
 
+// ReactorWALFsync makes the reactor skip pebble WAL fsyncs while it syncs
+// blocks, and fsync every WAL before it switches to consensus. nil (the
+// default) keeps every fsync.
+func ReactorWALFsync(c *walfsync.Controller) ReactorOption {
+	return func(bcR *Reactor) {
+		bcR.walFsync = c
+	}
+}
+
 type peerError struct {
 	err    error
 	peerID p2p.ID
@@ -101,6 +111,8 @@ type Reactor struct {
 	errorsCh   <-chan peerError
 
 	switchToConsensusMs int
+
+	walFsync *walfsync.Controller
 
 	metrics *Metrics
 
@@ -185,6 +197,7 @@ func (bcR *Reactor) SetLogger(l log.Logger) {
 // OnStart implements service.Service.
 func (bcR *Reactor) OnStart() error {
 	if bcR.blockSync {
+		bcR.startCatchup()
 		err := bcR.pool.Start()
 		if err != nil {
 			return err
@@ -204,6 +217,7 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.initialState = state
 
 	bcR.pool.SetHeight(state.LastBlockHeight + 1)
+	bcR.startCatchup()
 	err := bcR.pool.Start()
 	if err != nil {
 		return err
@@ -214,6 +228,23 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 		bcR.poolRoutine(true)
 	}()
 	return nil
+}
+
+// startCatchup starts skipping WAL fsyncs. If the crash marker cannot be
+// written, the node keeps fsyncing.
+func (bcR *Reactor) startCatchup() {
+	if err := bcR.walFsync.StartCatchup(); err != nil {
+		bcR.Logger.Error("Keeping WAL fsyncs on while block syncing", "err", err)
+	}
+}
+
+// finishCatchup makes every write done while block syncing durable. It must
+// return before the node switches to consensus: the node then signs votes and
+// fsyncs the consensus WAL, which must not get ahead of the databases.
+func (bcR *Reactor) finishCatchup() {
+	if err := bcR.walFsync.FinishCatchup(); err != nil {
+		panic(fmt.Sprintf("failed to fsync the database WAL files before switching to consensus: %v", err))
+	}
 }
 
 // OnStop implements service.Service.
@@ -517,6 +548,7 @@ FOR_LOOP:
 				if err := bcR.pool.Stop(); err != nil {
 					bcR.Logger.Error("Error stopping pool", "err", err)
 				}
+				bcR.finishCatchup()
 				conR, ok := bcR.Switch.Reactor("CONSENSUS").(consensusReactor)
 				if ok {
 					conR.SwitchToConsensus(state, blocksSynced > 0 || stateSynced)
