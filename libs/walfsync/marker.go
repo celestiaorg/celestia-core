@@ -124,7 +124,13 @@ func (c *Controller) FinishCatchup() error {
 //     accept is true, in which case the WAL files are fsynced, the marker is
 //     removed and the node goes on to the handshake.
 func CheckMarker(dirs []string, accept bool) (found bool, err error) {
-	path := filepath.Join(dirs[0], MarkerFile)
+	return CheckMarkerFile(MarkerFile, dirs, accept)
+}
+
+// CheckMarkerFile is CheckMarker for a marker named name in dirs[0], such as
+// the marker of an application process that shares the data directory.
+func CheckMarkerFile(name string, dirs []string, accept bool) (found bool, err error) {
+	path := filepath.Join(dirs[0], name)
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
