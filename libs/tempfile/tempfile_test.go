@@ -141,3 +141,26 @@ func TestWriteFileAtomicManyDuplicates(t *testing.T) {
 	require.Nil(t, err, "Error reading resultant file")
 	require.Equal(t, []byte(expectedString), resultantFileBytes, "Written file had incorrect bytes")
 }
+
+// The directory is fsynced after the rename, so a power loss cannot bring
+// back the old file, and a failure to fsync it is reported.
+func TestWriteFileAtomicSyncsDir(t *testing.T) {
+	dir := t.TempDir()
+	name := dir + "/state.json"
+	orig := dirSyncer
+	t.Cleanup(func() { dirSyncer = orig })
+
+	var synced []string
+	dirSyncer = func(d string) error {
+		got, err := os.ReadFile(name)
+		require.NoError(t, err)
+		require.Equal(t, "new", string(got), "directory synced before the rename")
+		synced = append(synced, d)
+		return orig(d)
+	}
+	require.NoError(t, WriteFileAtomic(name, []byte("new"), 0o600))
+	require.Equal(t, []string{dir}, synced)
+
+	dirSyncer = func(string) error { return fmt.Errorf("fsync failed") }
+	require.ErrorContains(t, WriteFileAtomic(name, []byte("newer"), 0o600), "fsync failed")
+}
