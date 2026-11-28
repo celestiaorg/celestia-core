@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,17 +13,17 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 )
 
-// Automatic pebble sizing ([storage] pebble_cache_size_mb = 0 and
-// pebble_max_compactions = 0).
+// Automatic pebble sizing ([storage] pebble_cache_size_mb = 0).
 //
-// RAM is the smaller of the machine's memory and the cgroup memory limit.
+// RAM is the smaller of the machine's memory and the memory limit of this
+// process's cgroup and its ancestors (v1 or v2).
 // reserve is [storage] pebble_memory_reserve_mb (default 20 GiB): memory left
 // for the application (the multiplexer's app process, or the app in this
 // process), the node's own heap and the OS. The app should keep within about
 // reserve - 4 GiB.
 //
 //	cache       = clamp((RAM - reserve) * 2/5, 256 MiB, 64 GiB), one cache shared by all node DBs
-//	compactions = clamp(CPUs / 4, 2, 8) per DB
+//	compactions = clamp(CPUs / 4, 2, 8) per DB (always automatic)
 //
 // The cache is 2/5 rather than all of what is left because, without cgo, pebble
 // allocates the cache on the Go heap, which the garbage collector lets grow to
@@ -37,18 +38,18 @@ const (
 	unknownRAMPebbleCacheMB = 1 << 10
 )
 
-// AutoPebbleCacheMB returns the automatic cache size for ramMB of memory
+// autoPebbleCacheMB returns the automatic cache size for ramMB of memory
 // (0 = unknown) after leaving reserveMB.
-func AutoPebbleCacheMB(ramMB, reserveMB int64) int64 {
+func autoPebbleCacheMB(ramMB, reserveMB int64) int64 {
 	if ramMB <= 0 {
 		return unknownRAMPebbleCacheMB
 	}
 	return clampInt64((ramMB-reserveMB)*2/5, minAutoPebbleCacheMB, maxAutoPebbleCacheMB)
 }
 
-// AutoPebbleCompactions returns the automatic number of concurrent compactions
-// per DB for cpus CPUs.
-func AutoPebbleCompactions(cpus int) int {
+// autoPebbleCompactions returns the number of concurrent compactions per DB
+// for cpus CPUs.
+func autoPebbleCompactions(cpus int) int {
 	return int(clampInt64(int64(cpus/4), 2, 8))
 }
 
@@ -61,33 +62,22 @@ func (cfg *StorageConfig) pebbleCacheMB() int64 {
 	if cfg.PebbleCacheSizeMB > 0 {
 		return int64(cfg.PebbleCacheSizeMB)
 	}
-	return AutoPebbleCacheMB(memoryMB(), int64(cfg.PebbleMemoryReserveMB))
+	return autoPebbleCacheMB(memoryMB(""), int64(cfg.PebbleMemoryReserveMB))
 }
 
-func (cfg *StorageConfig) pebbleCompactions() int {
-	if cfg.PebbleMaxCompactions > 0 {
-		return cfg.PebbleMaxCompactions
-	}
-	return AutoPebbleCompactions(runtime.NumCPU())
-}
-
-// One block cache per size, shared by every DB of the process. A cache per DB
-// would multiply the memory by the number of DBs.
-var pebbleCaches = struct {
-	sync.Mutex
-	bySize map[int64]*pebble.Cache
-}{bySize: make(map[int64]*pebble.Cache)}
+// One block cache shared by every DB of the process, sized by the first DB
+// opened. A cache per DB would multiply the memory by the number of DBs.
+var (
+	pebbleCacheOnce sync.Once
+	pebbleCache     *pebble.Cache
+)
 
 func sharedPebbleCache(mb int64) *pebble.Cache {
-	pebbleCaches.Lock()
-	defer pebbleCaches.Unlock()
-	c, ok := pebbleCaches.bySize[mb]
-	if !ok {
+	pebbleCacheOnce.Do(func() {
 		// Never unreferenced: it lives as long as the process.
-		c = pebble.NewCache(mb << 20)
-		pebbleCaches.bySize[mb] = c
-	}
-	return c
+		pebbleCache = pebble.NewCache(mb << 20)
+	})
+	return pebbleCache
 }
 
 // tunePebble sets the options for the node's DBs when [storage] pebble_tuning
@@ -99,7 +89,7 @@ func (cfg *StorageConfig) tunePebble(opts *pebble.Options) {
 		return
 	}
 	opts.Cache = sharedPebbleCache(cfg.pebbleCacheMB())
-	compactions := cfg.pebbleCompactions()
+	compactions := autoPebbleCompactions(runtime.NumCPU())
 	opts.MaxConcurrentCompactions = func() int { return compactions }
 	opts.MemTableStopWritesThreshold = 4
 	opts.L0CompactionThreshold = 4
@@ -115,17 +105,18 @@ func (cfg *StorageConfig) tunePebble(opts *pebble.Options) {
 }
 
 // memoryMB returns the memory available to this process in MiB, or 0 if
-// unknown: the smaller of MemTotal and the cgroup limit.
-func memoryMB() int64 {
-	mb := memTotalMB()
-	if lim := cgroupLimitMB(); lim > 0 && (mb == 0 || lim < mb) {
+// unknown: the smaller of MemTotal and the cgroup limits. root prefixes /proc
+// and /sys, for tests.
+func memoryMB(root string) int64 {
+	mb := memTotalMB(root)
+	if lim := cgroupLimitMB(root); lim > 0 && (mb == 0 || lim < mb) {
 		mb = lim
 	}
 	return mb
 }
 
-func memTotalMB() int64 {
-	f, err := os.Open("/proc/meminfo")
+func memTotalMB(root string) int64 {
+	f, err := os.Open(filepath.Join(root, "/proc/meminfo"))
 	if err != nil {
 		return 0
 	}
@@ -134,29 +125,114 @@ func memTotalMB() int64 {
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
 		if len(fields) >= 2 && fields[0] == "MemTotal:" {
-			kb, _ := strconv.ParseInt(fields[1], 10, 64)
+			kb, err := strconv.ParseInt(fields[1], 10, 64)
+			if err != nil {
+				return 0
+			}
 			return kb >> 10
 		}
 	}
 	return 0
 }
 
-// cgroupLimitMB reads the cgroup v2, then v1, memory limit. 0 means none.
-func cgroupLimitMB() int64 {
-	for _, p := range []string{"/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"} {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			continue
+// cgroupLimitMB returns the smallest memory limit of this process's cgroups
+// and their ancestors, v2 and v1, in MiB; 0 means no limit found.
+//
+// v2: memory.max from /sys/fs/cgroup/<path> up to /sys/fs/cgroup.
+// v1: memory.limit_in_bytes from /sys/fs/cgroup/memory/<path> up to the
+// memory root, and hierarchical_memory_limit from memory.stat.
+// A path that does not exist (another cgroup namespace) falls back to the
+// root. "max", huge values and unparsable files mean no limit.
+func cgroupLimitMB(root string) int64 {
+	v2Path, v1Path, haveV2, haveV1 := "/", "/", true, true
+	if b, err := os.ReadFile(filepath.Join(root, "/proc/self/cgroup")); err == nil {
+		haveV2, haveV1 = false, false
+		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			parts := strings.SplitN(line, ":", 3)
+			if len(parts) != 3 {
+				continue
+			}
+			switch {
+			case parts[0] == "0" && parts[1] == "":
+				v2Path, haveV2 = parts[2], true
+			case containsController(parts[1], "memory"):
+				v1Path, haveV1 = parts[2], true
+			}
 		}
-		s := strings.TrimSpace(string(b))
-		if s == "max" {
-			return 0
+	}
+	var limit int64
+	consider := func(v int64) {
+		if v > 0 && v < 1<<62 && (limit == 0 || v < limit) {
+			limit = v
 		}
-		v, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || v <= 0 || v >= 1<<62 {
-			return 0
+	}
+	if haveV2 {
+		base := filepath.Join(root, "/sys/fs/cgroup")
+		for _, dir := range cgroupAncestors(base, v2Path) {
+			consider(readLimit(filepath.Join(dir, "memory.max")))
 		}
-		return v >> 20
+	}
+	if haveV1 {
+		base := filepath.Join(root, "/sys/fs/cgroup/memory")
+		dirs := cgroupAncestors(base, v1Path)
+		for _, dir := range dirs {
+			consider(readLimit(filepath.Join(dir, "memory.limit_in_bytes")))
+		}
+		consider(hierarchicalLimit(filepath.Join(dirs[0], "memory.stat")))
+	}
+	return limit >> 20
+}
+
+func containsController(list, name string) bool {
+	for _, c := range strings.Split(list, ",") {
+		if c == name {
+			return true
+		}
+	}
+	return false
+}
+
+// cgroupAncestors returns base/path and its parents up to base, deepest
+// first. If base/path does not exist it returns only base.
+func cgroupAncestors(base, path string) []string {
+	dir := filepath.Join(base, filepath.Clean("/"+path))
+	if _, err := os.Stat(dir); err != nil {
+		return []string{base}
+	}
+	dirs := []string{dir}
+	for dir != base {
+		dir = filepath.Dir(dir)
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
+// readLimit reads a byte count; "max", a missing file or garbage give 0.
+func readLimit(path string) int64 {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	v, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+func hierarchicalLimit(path string) int64 {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[0] == "hierarchical_memory_limit" {
+			v, err := strconv.ParseInt(f[1], 10, 64)
+			if err != nil {
+				return 0
+			}
+			return v
+		}
 	}
 	return 0
 }

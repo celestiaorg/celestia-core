@@ -359,7 +359,6 @@ func TestStorageConfigPebbleTuning(t *testing.T) {
 	cfg := config.DefaultStorageConfig()
 	require.True(t, cfg.PebbleTuning)
 	require.Zero(t, cfg.PebbleCacheSizeMB)
-	require.Zero(t, cfg.PebbleMaxCompactions)
 	require.Equal(t, 20480, cfg.PebbleMemoryReserveMB)
 	for _, tc := range []struct {
 		set func(*config.StorageConfig, int)
@@ -367,7 +366,6 @@ func TestStorageConfigPebbleTuning(t *testing.T) {
 		max int
 	}{
 		{func(c *config.StorageConfig, v int) { c.PebbleCacheSizeMB = v }, "pebble_cache_size_mb", 1 << 20},
-		{func(c *config.StorageConfig, v int) { c.PebbleMaxCompactions = v }, "pebble_max_compactions", 64},
 		{func(c *config.StorageConfig, v int) { c.PebbleMemoryReserveMB = v }, "pebble_memory_reserve_mb", 1 << 20},
 	} {
 		for v, ok := range map[int]bool{-1: false, 0: true, 1: true, tc.max: true, tc.max + 1: false} {
