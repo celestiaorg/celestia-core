@@ -3,7 +3,6 @@ package statesync
 import (
 	"context"
 	"errors"
-	"sort"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -291,23 +290,8 @@ func (r *Reactor) recentSnapshots(n uint32) ([]*snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(resp.Snapshots, func(i, j int) bool {
-		a := resp.Snapshots[i]
-		b := resp.Snapshots[j]
-		switch {
-		case a.Height > b.Height:
-			return true
-		case a.Height == b.Height && a.Format > b.Format:
-			return true
-		default:
-			return false
-		}
-	})
 	snapshots := make([]*snapshot, 0, n)
-	for i, s := range resp.Snapshots {
-		if i >= recentSnapshots {
-			break
-		}
+	for _, s := range abci.RecentSnapshots(resp.Snapshots, n) {
 		snapshots = append(snapshots, &snapshot{
 			Height:   s.Height,
 			Format:   s.Format,
@@ -337,7 +321,16 @@ func (r *Reactor) Sync(stateProvider StateProvider, discoveryTime time.Duration)
 	})
 	r.mtx.Unlock()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rpcPeers := make([]*rpcSnapshotPeer, 0, len(r.cfg.RPCServers))
+	for i, server := range r.cfg.RPCServers {
+		rpcPeers = append(rpcPeers, newRPCSnapshotPeer(ctx, i, server, r.syncer, r.cfg))
+	}
 	hook := func() {
+		for _, peer := range rpcPeers {
+			peer.discover()
+		}
 		r.Logger.Trace("Requesting snapshots from known peers")
 		// Request snapshots from all currently connected peers
 

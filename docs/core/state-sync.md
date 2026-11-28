@@ -23,6 +23,13 @@ Lets breakdown the settings:
     - 2 servers are required, more is always helpful.
 - `temp_dir`: Temporary directory is store the chunks in the machines local storage, If nothing is set it will create a directory in `/tmp`
 
+The node asks each configured RPC server for recent snapshots while it discovers P2P providers.
+A server that retains a suitable snapshot can supply the entire restore over HTTP even when
+its P2P inbound slots are full. Reverse proxies serving snapshots must allow `/snapshots`
+and `/snapshot_chunk?height=H&format=F&index=I`. Older servers can still provide light
+blocks, and snapshot discovery over P2P continues. All restores verify the application hash
+against the light client.
+
 The next information you will need to acquire it through publicly exposed RPC's or a block explorer which you trust.
 
 - `trust_height`: Trusted height defines at which height your node should trust the chain.

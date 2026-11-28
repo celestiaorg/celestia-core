@@ -72,8 +72,9 @@ type consensusReactor interface {
 // to be setup once during startup.
 type Environment struct {
 	// external, thread safe interfaces
-	ProxyAppQuery   proxy.AppConnQuery
-	ProxyAppMempool proxy.AppConnMempool
+	ProxyAppQuery    proxy.AppConnQuery
+	ProxyAppSnapshot proxy.AppConnSnapshot
+	ProxyAppMempool  proxy.AppConnMempool
 
 	// interfaces defined in types and above
 	StateStore       sm.Store
@@ -101,6 +102,8 @@ type Environment struct {
 
 	// heavySem bounds concurrent "heavy" RPC responses, shared across all
 	// transports. Built once, lazily, via HeavySem.
+	snapshotOffers snapshotOfferCache
+
 	heavySem     chan struct{}
 	heavySemOnce sync.Once
 }

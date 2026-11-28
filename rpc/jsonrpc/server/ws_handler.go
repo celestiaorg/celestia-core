@@ -380,7 +380,7 @@ func (wsc *wsConnection) readRoutine() {
 
 			// Now, fetch the RPCFunc and execute it.
 			rpcFunc := wsc.funcMap[request.Method]
-			if rpcFunc == nil {
+			if rpcFunc == nil || rpcFunc.uriOnly {
 				if err := wsc.WriteRPCResponse(writeCtx, types.RPCMethodNotFoundError(request.ID)); err != nil {
 					wsc.Logger.Error("Error writing RPC response", "err", err)
 				}

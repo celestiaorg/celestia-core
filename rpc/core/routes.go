@@ -56,6 +56,8 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"broadcast_evidence": rpc.NewRPCFunc(env.BroadcastEvidence, "evidence"),
 
 		// celestia-specific API
+		"snapshots":                 rpc.NewRPCFunc(env.Snapshots, "", heavy, rpc.URIOnly()),
+		"snapshot_chunk":            rpc.NewRPCFunc(env.SnapshotChunk, "height,format,index", heavy, rpc.URIOnly()),
 		"prove_shares":              rpc.NewRPCFunc(env.ProveShares, "height,startShare,endShare", heavy),
 		"prove_shares_v2":           rpc.NewRPCFunc(env.ProveSharesV2, "height,startShare,endShare", heavy),
 		"data_root_inclusion_proof": rpc.NewRPCFunc(env.DataRootInclusionProof, "height,start,end", heavy),

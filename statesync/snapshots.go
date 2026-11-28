@@ -39,11 +39,17 @@ func (s *snapshot) Key() snapshotKey {
 	return key
 }
 
+// snapshotPeer supplies snapshot offers and accepts chunk requests.
+type snapshotPeer interface {
+	ID() p2p.ID
+	Send(p2p.Envelope) bool
+}
+
 // snapshotPool discovers and aggregates snapshots across peers.
 type snapshotPool struct {
 	cmtsync.Mutex
 	snapshots     map[snapshotKey]*snapshot
-	snapshotPeers map[snapshotKey]map[p2p.ID]p2p.Peer
+	snapshotPeers map[snapshotKey]map[p2p.ID]snapshotPeer
 
 	// indexes for fast searches
 	formatIndex map[uint32]map[snapshotKey]bool
@@ -60,7 +66,7 @@ type snapshotPool struct {
 func newSnapshotPool() *snapshotPool {
 	return &snapshotPool{
 		snapshots:         make(map[snapshotKey]*snapshot),
-		snapshotPeers:     make(map[snapshotKey]map[p2p.ID]p2p.Peer),
+		snapshotPeers:     make(map[snapshotKey]map[p2p.ID]snapshotPeer),
 		formatIndex:       make(map[uint32]map[snapshotKey]bool),
 		heightIndex:       make(map[uint64]map[snapshotKey]bool),
 		peerIndex:         make(map[p2p.ID]map[snapshotKey]bool),
@@ -73,7 +79,7 @@ func newSnapshotPool() *snapshotPool {
 // Add adds a snapshot to the pool, unless the peer has already sent recentSnapshots snapshots. It
 // returns true if this was a new, non-blacklisted snapshot. The snapshot height is verified using
 // the light client, and the expected app hash is set for the snapshot.
-func (p *snapshotPool) Add(peer p2p.Peer, snapshot *snapshot) (bool, error) {
+func (p *snapshotPool) Add(peer snapshotPeer, snapshot *snapshot) (bool, error) {
 	key := snapshot.Key()
 
 	p.Lock()
@@ -91,7 +97,7 @@ func (p *snapshotPool) Add(peer p2p.Peer, snapshot *snapshot) (bool, error) {
 	}
 
 	if p.snapshotPeers[key] == nil {
-		p.snapshotPeers[key] = make(map[p2p.ID]p2p.Peer)
+		p.snapshotPeers[key] = make(map[p2p.ID]snapshotPeer)
 	}
 	p.snapshotPeers[key][peer.ID()] = peer
 
@@ -128,7 +134,7 @@ func (p *snapshotPool) Best() *snapshot {
 }
 
 // GetPeer returns a random peer for a snapshot, if any.
-func (p *snapshotPool) GetPeer(snapshot *snapshot) p2p.Peer {
+func (p *snapshotPool) GetPeer(snapshot *snapshot) snapshotPeer {
 	peers := p.GetPeers(snapshot)
 	if len(peers) == 0 {
 		return nil
@@ -137,12 +143,12 @@ func (p *snapshotPool) GetPeer(snapshot *snapshot) p2p.Peer {
 }
 
 // GetPeers returns the peers for a snapshot.
-func (p *snapshotPool) GetPeers(snapshot *snapshot) []p2p.Peer {
+func (p *snapshotPool) GetPeers(snapshot *snapshot) []snapshotPeer {
 	key := snapshot.Key()
 	p.Lock()
 	defer p.Unlock()
 
-	peers := make([]p2p.Peer, 0, len(p.snapshotPeers[key]))
+	peers := make([]snapshotPeer, 0, len(p.snapshotPeers[key]))
 	for _, peer := range p.snapshotPeers[key] {
 		peers = append(peers, peer)
 	}
@@ -207,6 +213,12 @@ func (p *snapshotPool) RejectFormat(format uint32) {
 	for key := range p.formatIndex[format] {
 		p.removeSnapshot(key)
 	}
+}
+
+func (p *snapshotPool) isPeerRejected(id p2p.ID) bool {
+	p.Lock()
+	defer p.Unlock()
+	return p.peerBlacklist[id]
 }
 
 // RejectPeer rejects a peer. It will never be used again.
