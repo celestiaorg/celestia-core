@@ -1473,7 +1473,23 @@ type StorageConfig struct {
 	// fsyncs while block syncing, or "always" to fsync them on every synced
 	// write. It does not affect the consensus WAL. See libs/walfsync.
 	DBWALFsync string `mapstructure:"db_wal_fsync"`
+	// PebbleTuning turns on the tuned pebble options and the block cache
+	// shared by all node DBs (see config/pebble.go).
+	PebbleTuning bool `mapstructure:"pebble_tuning"`
+	// PebbleCacheSizeMB is the shared pebble block cache in MiB; 0 sizes it
+	// from the machine's memory.
+	PebbleCacheSizeMB int `mapstructure:"pebble_cache_size_mb"`
+	// PebbleMemoryReserveMB is the memory automatic sizing leaves for the app,
+	// the node's heap and the OS.
+	PebbleMemoryReserveMB int `mapstructure:"pebble_memory_reserve_mb"`
 }
+
+// Bounds of the pebble settings.
+const (
+	maxPebbleCacheSizeMB   = 1 << 20 // 1 TiB
+	maxPebbleReserveMB     = 1 << 20
+	defaultPebbleReserveMB = 20 << 10
+)
 
 // maxBlockstoreMemtableSizeMB bounds blockstore_memtable_size_mb; about three
 // memtables can be resident at once, and 256 MiB covers twice the largest block.
@@ -1488,7 +1504,9 @@ func DefaultStorageConfig() *StorageConfig {
 		CompactionInterval:       10000,
 		BlockstoreMemtableSizeMB: 64,
 		BlockstoreGoLevelDBDisableLargeBatchTransaction: true,
-		DBWALFsync: walfsync.ModeCatchup,
+		DBWALFsync:            walfsync.ModeCatchup,
+		PebbleTuning:          true,
+		PebbleMemoryReserveMB: defaultPebbleReserveMB,
 	}
 }
 
@@ -1509,6 +1527,12 @@ func (cfg *StorageConfig) ValidateBasic() error {
 	}
 	if err := walfsync.ValidateMode(cfg.DBWALFsync); err != nil {
 		return err
+	}
+	if cfg.PebbleCacheSizeMB < 0 || cfg.PebbleCacheSizeMB > maxPebbleCacheSizeMB {
+		return fmt.Errorf("pebble_cache_size_mb must be between 0 (auto) and %d, got %d", maxPebbleCacheSizeMB, cfg.PebbleCacheSizeMB)
+	}
+	if cfg.PebbleMemoryReserveMB < 0 || cfg.PebbleMemoryReserveMB > maxPebbleReserveMB {
+		return fmt.Errorf("pebble_memory_reserve_mb must be between 0 and %d, got %d", maxPebbleReserveMB, cfg.PebbleMemoryReserveMB)
 	}
 	if cfg.Compact && cfg.CompactionInterval <= 0 {
 		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
